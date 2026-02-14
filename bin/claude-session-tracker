@@ -25,6 +25,41 @@ fi
 state_file="$STATE_DIR/${session_id}.json"
 timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
+find_theme_color() {
+  local dir="$1"
+  local theme_name=""
+
+  # Walk up from cwd looking for .terminal-theme
+  while [ "$dir" != "/" ]; do
+    if [ -f "$dir/.terminal-theme" ]; then
+      theme_name=$(cat "$dir/.terminal-theme")
+      break
+    fi
+    dir=$(dirname "$dir")
+  done
+
+  if [ -z "$theme_name" ]; then
+    return
+  fi
+
+  # Look up theme file
+  local theme_file=""
+  if [ -n "${DOT_PATH:-}" ] && [ -f "$DOT_PATH/bash/terminal-themes/$theme_name" ]; then
+    theme_file="$DOT_PATH/bash/terminal-themes/$theme_name"
+  elif [ -f "$HOME/Dropbox/dotfiles/bash/terminal-themes/$theme_name" ]; then
+    theme_file="$HOME/Dropbox/dotfiles/bash/terminal-themes/$theme_name"
+  fi
+
+  if [ -z "$theme_file" ]; then
+    return
+  fi
+
+  # Extract prompt_fill value
+  local color
+  color=$(grep -E '^prompt_fill=' "$theme_file" | cut -d= -f2)
+  echo "${color:-}"
+}
+
 find_window_id() {
   if [ -n "${WINDOWID:-}" ]; then
     echo "$WINDOWID"
@@ -73,6 +108,7 @@ case "$action" in
     cwd=$(echo "$input" | jq -r '.cwd // empty')
     project_name=$(basename "$cwd")
     window_id=$(find_window_id)
+    theme_color=$(find_theme_color "$cwd")
 
     local_tmp="${state_file}.tmp"
     jq -n \
@@ -80,12 +116,14 @@ case "$action" in
       --arg cwd "$cwd" \
       --arg pname "$project_name" \
       --arg wid "$window_id" \
+      --arg tc "$theme_color" \
       --arg ts "$timestamp" \
       '{
         session_id: $sid,
         cwd: $cwd,
         project_name: $pname,
         window_id: $wid,
+        theme_color: $tc,
         status: "active",
         timestamp: $ts
       }' > "$local_tmp"

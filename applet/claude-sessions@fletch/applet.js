@@ -7,13 +7,17 @@ const Util = imports.misc.util;
 const Mainloop = imports.mainloop;
 
 const STATE_DIR = GLib.build_filenamev([GLib.get_home_dir(), '.local', 'state', 'claude-sessions']);
+const DEFAULT_COLOR = '#cc241d';
+const DOT_SIZE = 12;
 
-class ClaudeSessionsApplet extends Applet.TextIconApplet {
+class ClaudeSessionsApplet extends Applet.Applet {
     constructor(metadata, orientation, panelHeight, instanceId) {
         super(orientation, panelHeight, instanceId);
 
-        this.set_applet_icon_symbolic_name('utilities-terminal-symbolic');
         this.set_applet_tooltip('Claude Sessions');
+
+        this._dotBox = new St.BoxLayout({ style: 'spacing: 4px;' });
+        this.actor.add(this._dotBox);
 
         this.menuManager = new PopupMenu.PopupMenuManager(this);
         this.menu = new Applet.AppletPopupMenu(this, orientation);
@@ -31,7 +35,6 @@ class ClaudeSessionsApplet extends Applet.TextIconApplet {
     _setupMonitor() {
         let dir = Gio.File.new_for_path(STATE_DIR);
 
-        // Ensure the directory exists
         try {
             dir.make_directory_with_parents(null);
         } catch (e) {
@@ -68,7 +71,7 @@ class ClaudeSessionsApplet extends Applet.TextIconApplet {
                 null
             );
         } catch (e) {
-            this._updateVisibility();
+            this._updatePanel();
             return;
         }
 
@@ -89,7 +92,7 @@ class ClaudeSessionsApplet extends Applet.TextIconApplet {
             }
         }
 
-        this._updateVisibility();
+        this._updatePanel();
         this._rebuildMenu();
     }
 
@@ -110,17 +113,36 @@ class ClaudeSessionsApplet extends Applet.TextIconApplet {
         return waiting;
     }
 
-    _updateVisibility() {
+    _updatePanel() {
         let waiting = this._getWaitingSessions();
-        let count = waiting.length;
 
-        if (count === 0) {
+        this._dotBox.destroy_all_children();
+
+        if (waiting.length === 0) {
             this.actor.hide();
             this._stopTimer();
-        } else {
-            this.actor.show();
-            this.set_applet_label(count.toString());
-            this._startTimer();
+            return;
+        }
+
+        this.actor.show();
+        this._startTimer();
+
+        for (let session of waiting) {
+            let color = session.theme_color || DEFAULT_COLOR;
+            let isPermission = session.status === 'permission';
+
+            let border = isPermission
+                ? 'border: 2px solid #ffffff;'
+                : 'border: 2px solid transparent;';
+
+            let dot = new St.Bin({
+                style: `background-color: ${color}; `
+                     + `width: ${DOT_SIZE}px; height: ${DOT_SIZE}px; `
+                     + `border-radius: ${DOT_SIZE}px; `
+                     + border,
+            });
+
+            this._dotBox.add_child(dot);
         }
     }
 
@@ -156,7 +178,6 @@ class ClaudeSessionsApplet extends Applet.TextIconApplet {
             let label = `${icon} ${session.project_name}  (${session.status}, ${elapsed})`;
 
             let item = new PopupMenu.PopupMenuItem(label);
-            let windowId = session.window_id;
             let sessionId = session.session_id;
             item.connect('activate', () => {
                 Util.spawnCommandLine(`bash -c 'echo "{\\"session_id\\":\\"${sessionId}\\"}" | claude-session-tracker focus'`);
@@ -169,7 +190,7 @@ class ClaudeSessionsApplet extends Applet.TextIconApplet {
         if (this._timerId) return;
         this._timerId = Mainloop.timeout_add_seconds(30, () => {
             this._rebuildMenu();
-            this._updateVisibility();
+            this._updatePanel();
             return GLib.SOURCE_CONTINUE;
         });
     }
