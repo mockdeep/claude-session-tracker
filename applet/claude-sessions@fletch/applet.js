@@ -159,7 +159,9 @@ class ClaudeSessionsApplet extends Applet.TextIconApplet {
             let windowId = session.window_id;
             item.connect('activate', () => {
                 if (windowId) {
-                    Util.spawnCommandLine(`xdotool windowactivate ${windowId}`);
+                    // wmctrl -i -a switches to the window's workspace and activates it
+                    let hexId = '0x' + parseInt(windowId, 10).toString(16).padStart(8, '0');
+                    Util.spawnCommandLine(`wmctrl -i -a ${hexId}`);
                 }
             });
             this.menu.addMenuItem(item);
