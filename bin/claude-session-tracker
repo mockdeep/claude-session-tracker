@@ -26,22 +26,17 @@ state_file="$STATE_DIR/${session_id}.json"
 timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 find_window_id() {
-  # Walk up the process tree to find the terminal's PID, then get its window ID
-  local pid=$$
-  local window_id=""
+  # Use WINDOWID env var if available (set by most X11 terminals)
+  if [ -n "${WINDOWID:-}" ]; then
+    echo "$WINDOWID"
+    return
+  fi
 
-  # Walk up parent PIDs looking for a window
-  while [ "$pid" -gt 1 ]; do
-    window_id=$(xdotool search --pid "$pid" 2>/dev/null | head -1 || true)
-    if [ -n "$window_id" ]; then
-      echo "$window_id"
-      return
-    fi
-    pid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')
-    [ -z "$pid" ] && break
-  done
-
-  echo ""
+  # Fall back to the currently active window — the hook fires while the
+  # terminal running Claude is focused, so this is reliable at session start.
+  local wid
+  wid=$(xdotool getactivewindow 2>/dev/null || true)
+  echo "${wid:-}"
 }
 
 update_state() {
