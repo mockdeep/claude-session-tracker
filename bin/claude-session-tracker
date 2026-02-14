@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+STATE_DIR="$HOME/.local/state/claude-sessions"
+mkdir -p "$STATE_DIR"
+
+action="${1:-}"
+
+# Read stdin (hook JSON payload)
+input=""
+if [ ! -t 0 ]; then
+  input=$(cat)
+fi
+
+# Extract session_id from input JSON
+session_id=""
+if [ -n "$input" ]; then
+  session_id=$(echo "$input" | jq -r '.session_id // empty')
+fi
+
+if [ -z "$session_id" ]; then
+  exit 0
+fi
+
+state_file="$STATE_DIR/${session_id}.json"
+timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+find_window_id() {
+  # Walk up the process tree to find the terminal's PID, then get its window ID
+  local pid=$$
+  local window_id=""
+
+  # Walk up parent PIDs looking for a window
+  while [ "$pid" -gt 1 ]; do
+    window_id=$(xdotool search --pid "$pid" 2>/dev/null | head -1 || true)
+    if [ -n "$window_id" ]; then
+      echo "$window_id"
+      return
+    fi
+    pid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')
+    [ -z "$pid" ] && break
+  done
+
+  echo ""
+}
+
+update_state() {
+  local new_status="$1"
+  if [ -f "$state_file" ]; then
+    local tmp="${state_file}.tmp"
+    jq --arg status "$new_status" --arg ts "$timestamp" \
+      '.status = $status | .timestamp = $ts' "$state_file" > "$tmp"
+    mv "$tmp" "$state_file"
+  fi
+}
+
+case "$action" in
+  session-start)
+    cwd=$(echo "$input" | jq -r '.cwd // empty')
+    project_name=$(basename "$cwd")
+    window_id=$(find_window_id)
+
+    local_tmp="${state_file}.tmp"
+    jq -n \
+      --arg sid "$session_id" \
+      --arg cwd "$cwd" \
+      --arg pname "$project_name" \
+      --arg wid "$window_id" \
+      --arg ts "$timestamp" \
+      '{
+        session_id: $sid,
+        cwd: $cwd,
+        project_name: $pname,
+        window_id: $wid,
+        status: "active",
+        timestamp: $ts
+      }' > "$local_tmp"
+    mv "$local_tmp" "$state_file"
+    ;;
+
+  notification-idle)
+    update_state "idle"
+    ;;
+
+  notification-permission)
+    update_state "permission"
+    ;;
+
+  prompt-submit)
+    update_state "active"
+    ;;
+
+  session-end)
+    rm -f "$state_file"
+    ;;
+
+  *)
+    echo "Unknown action: $action" >&2
+    exit 1
+    ;;
+esac
