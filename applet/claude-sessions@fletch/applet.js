@@ -157,12 +157,9 @@ class ClaudeSessionsApplet extends Applet.TextIconApplet {
 
             let item = new PopupMenu.PopupMenuItem(label);
             let windowId = session.window_id;
+            let sessionId = session.session_id;
             item.connect('activate', () => {
-                if (windowId) {
-                    // wmctrl -i -a switches to the window's workspace and activates it
-                    let hexId = '0x' + parseInt(windowId, 10).toString(16).padStart(8, '0');
-                    Util.spawnCommandLine(`wmctrl -i -a ${hexId}`);
-                }
+                Util.spawnCommandLine(`bash -c 'echo "{\\"session_id\\":\\"${sessionId}\\"}" | claude-session-tracker focus'`);
             });
             this.menu.addMenuItem(item);
         }

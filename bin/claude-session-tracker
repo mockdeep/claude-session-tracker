@@ -89,6 +89,19 @@ case "$action" in
     rm -f "$state_file"
     ;;
 
+  focus)
+    # Find and activate the terminal window for this session's cwd
+    if [ -f "$state_file" ]; then
+      cwd=$(jq -r '.cwd // empty' "$state_file")
+      if [ -n "$cwd" ]; then
+        wid=$(wmctrl -l | grep "$cwd" | head -1 | awk '{print $1}')
+        if [ -n "$wid" ]; then
+          wmctrl -i -a "$wid"
+        fi
+      fi
+    fi
+    ;;
+
   *)
     echo "Unknown action: $action" >&2
     exit 1
