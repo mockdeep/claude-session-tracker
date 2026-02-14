@@ -26,16 +26,35 @@ state_file="$STATE_DIR/${session_id}.json"
 timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 find_window_id() {
-  # Use WINDOWID env var if available (set by most X11 terminals)
   if [ -n "${WINDOWID:-}" ]; then
     echo "$WINDOWID"
     return
   fi
 
-  # Fall back to the currently active window — the hook fires while the
-  # terminal running Claude is focused, so this is reliable at session start.
+  # Find the controlling PTY by walking up the process tree
+  local pid=$$
+  local pty=""
+  while [ "$pid" -gt 1 ]; do
+    pty=$(readlink /proc/$pid/fd/0 2>/dev/null || true)
+    if [[ "$pty" == /dev/pts/* ]]; then
+      break
+    fi
+    pid=$(awk '{print $4}' /proc/$pid/stat 2>/dev/null || echo 1)
+  done
+
+  if [[ "$pty" != /dev/pts/* ]]; then
+    echo ""
+    return
+  fi
+
+  # Briefly set terminal title via the PTY, find the window, then clear it
+  local marker="__claude_session_${session_id}__"
+  printf '\033]2;%s\007' "$marker" > "$pty" 2>/dev/null
+  sleep 0.2
   local wid
-  wid=$(xdotool getactivewindow 2>/dev/null || true)
+  wid=$(xdotool search --name "$marker" 2>/dev/null | head -1 || true)
+  # Clear the marker title — Claude's status line will overwrite it anyway
+  printf '\033]2;\007' > "$pty" 2>/dev/null
   echo "${wid:-}"
 }
 
@@ -90,14 +109,12 @@ case "$action" in
     ;;
 
   focus)
-    # Find and activate the terminal window for this session's cwd
     if [ -f "$state_file" ]; then
-      cwd=$(jq -r '.cwd // empty' "$state_file")
-      if [ -n "$cwd" ]; then
-        wid=$(wmctrl -l | grep "$cwd" | head -1 | awk '{print $1}')
-        if [ -n "$wid" ]; then
-          wmctrl -i -a "$wid"
-        fi
+      wid=$(jq -r '.window_id // empty' "$state_file")
+      if [ -n "$wid" ]; then
+        # Convert decimal window ID to hex for wmctrl
+        hex_wid=$(printf '0x%08x' "$wid")
+        wmctrl -i -a "$hex_wid"
       fi
     fi
     ;;
