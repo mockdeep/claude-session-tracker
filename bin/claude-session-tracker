@@ -118,6 +118,7 @@ case "$action" in
       --arg wid "$window_id" \
       --arg tc "$theme_color" \
       --arg ts "$timestamp" \
+      --argjson pid "$PPID" \
       '{
         session_id: $sid,
         cwd: $cwd,
@@ -125,7 +126,8 @@ case "$action" in
         window_id: $wid,
         theme_color: $tc,
         status: "idle",
-        timestamp: $ts
+        timestamp: $ts,
+        pid: $pid
       }' > "$local_tmp"
     mv "$local_tmp" "$state_file"
     ;;

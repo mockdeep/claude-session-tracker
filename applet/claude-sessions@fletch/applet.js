@@ -105,6 +105,10 @@ class ClaudeSessionsApplet extends Applet.Applet {
                     let [ok, contents] = file.load_contents(null);
                     if (ok) {
                         let session = JSON.parse(new TextDecoder().decode(contents));
+                        if (session.pid && !GLib.file_test('/proc/' + session.pid, GLib.FileTest.EXISTS)) {
+                            file.delete(null);
+                            continue;
+                        }
                         sessions[session.session_id] = session;
                     }
                 } catch (e) {
