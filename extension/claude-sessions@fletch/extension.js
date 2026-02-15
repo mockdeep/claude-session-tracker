@@ -24,6 +24,8 @@ class ClaudeSessionsExtension {
         this._sessions = {};
         this._lastSnapshot = '';
         this._focusedXid = 0;
+        this._focusedTabIndex = -1;
+        this._focusedDbusPath = null;
         this._pollTimerId = null;
         this._pulseTimerId = null;
         this._pulsingDots = [];
@@ -140,7 +142,50 @@ class ClaudeSessionsExtension {
         let newXid = win ? win.get_xwindow() : 0;
         if (newXid !== this._focusedXid) {
             this._focusedXid = newXid;
+            this._updateFocusedTab();
             this._updateWidget();
+        }
+    }
+
+    _updateFocusedTab() {
+        this._focusedTabIndex = -1;
+        this._focusedDbusPath = null;
+
+        if (!this._focusedXid) return;
+
+        // Find a session matching the focused window that has D-Bus tab info
+        let dbusPath = null;
+        for (let sid in this._sessions) {
+            let s = this._sessions[sid];
+            if (s.window_id && parseInt(s.window_id) === this._focusedXid
+                && s.dbus_window_path) {
+                dbusPath = s.dbus_window_path;
+                break;
+            }
+        }
+        if (!dbusPath) return;
+
+        this._focusedDbusPath = dbusPath;
+        try {
+            let result = Gio.DBus.session.call_sync(
+                'org.gnome.Terminal',
+                dbusPath,
+                'org.gtk.Actions',
+                'Describe',
+                new GLib.Variant('(s)', ['active-tab']),
+                GLib.VariantType.new('((bgav))'),
+                Gio.DBusCallFlags.NONE,
+                100,
+                null
+            );
+            // Result is ((enabled, signature, [<index>]))
+            let inner = result.get_child_value(0);
+            let values = inner.get_child_value(2);
+            if (values.n_children() > 0) {
+                this._focusedTabIndex = values.get_child_value(0).get_variant().get_int32();
+            }
+        } catch (e) {
+            // D-Bus call failed — not Gnome Terminal or window closed
         }
     }
 
@@ -156,7 +201,13 @@ class ClaudeSessionsExtension {
     }
 
     _pollCheck() {
+        let prevTabIndex = this._focusedTabIndex;
+        this._updateFocusedTab();
         this._refresh();
+        // Re-render if active tab changed but sessions didn't
+        if (this._focusedTabIndex !== prevTabIndex) {
+            this._updateWidget();
+        }
         return GLib.SOURCE_CONTINUE;
     }
 
@@ -268,7 +319,10 @@ class ClaudeSessionsExtension {
             let color = session.theme_color || DEFAULT_COLOR;
             let isPermission = session.status === 'permission';
             let isWaiting = isPermission || session.status === 'idle';
-            let isFocused = session.window_id && parseInt(session.window_id) === this._focusedXid;
+            let windowMatch = session.window_id && parseInt(session.window_id) === this._focusedXid;
+            let isFocused = windowMatch
+                && (session.tab_index == null
+                    || session.tab_index === this._focusedTabIndex);
 
             let borderStyle = isPermission
                 ? 'border: 3px solid #ffffff;'
