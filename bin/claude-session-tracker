@@ -191,13 +191,7 @@ case "$action" in
     ;;
 
   tool-active)
-    # After a tool executes (permission was granted), go back to active
-    if [ -f "$state_file" ]; then
-      current_status=$(jq -r '.status // empty' "$state_file")
-      if [ "$current_status" = "permission" ]; then
-        update_state "active"
-      fi
-    fi
+    update_state "active"
     ;;
 
   notification-idle)

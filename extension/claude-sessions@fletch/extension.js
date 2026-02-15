@@ -11,9 +11,9 @@ const DOT_SPACING = 16;
 const GRID_COLUMNS = 2;
 const POLL_INTERVAL_SECONDS = 1;
 const PULSE_INTERVAL_MS = 80;
-const PULSE_MIN_OPACITY = 100;
-const PULSE_MAX_OPACITY = 200;
-const PULSE_STEP = 8;
+const PULSE_MIN_OPACITY = 30;
+const PULSE_MAX_OPACITY = 120;
+const PULSE_STEP = 6;
 const EDGE_OFFSET = 10;
 
 let _instance = null;
@@ -353,7 +353,10 @@ class ClaudeSessionsExtension {
             let session = sessions[i];
             let color = session.theme_color || DEFAULT_COLOR;
             let isPermission = session.status === 'permission';
-            let isWaiting = isPermission || session.status === 'idle';
+            let idleAge = session.status === 'idle' && session.timestamp
+                ? (Date.now() - new Date(session.timestamp).getTime()) / 1000
+                : Infinity;
+            let isWaiting = isPermission || (session.status === 'idle' && idleAge > 3);
             let windowMatch = session.window_id && parseInt(session.window_id) === this._focusedXid;
             let isFocused = windowMatch
                 && (session.tab_index == null
