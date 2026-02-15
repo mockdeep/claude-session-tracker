@@ -12,9 +12,9 @@ if ! shellcheck "$TRACKER"; then
 fi
 
 # Use a temp state dir so we don't interfere with real sessions
-export HOME=$(mktemp -d)
-STATE_DIR="$HOME/.local/state/claude-sessions"
-mkdir -p "$STATE_DIR"
+STATE_DIR=$(mktemp -d)
+trap 'rm -rf "$STATE_DIR"' EXIT
+export CLAUDE_SESSION_STATE_DIR="$STATE_DIR"
 
 # Set WINDOWID so session-start skips the slow PTY/xdotool lookup
 export WINDOWID=12345
@@ -56,6 +56,18 @@ assert_json_eq() {
   fi
 }
 
+assert_json_match() {
+  local file="$1" field="$2" pattern="$3"
+  local actual
+  actual=$(jq -r "$field" "$file")
+  if [[ "$actual" =~ $pattern ]]; then
+    inc_passed
+  else
+    echo "  FAIL: $field = '$actual', doesn't match /$pattern/"
+    inc_failed
+  fi
+}
+
 # --- session-start ---
 echo "session-start"
 echo '{"session_id":"test1","cwd":"/tmp/my-project"}' | "$TRACKER" session-start
@@ -64,24 +76,11 @@ assert_json_eq "$STATE_DIR/test1.json" '.session_id' 'test1'
 assert_json_eq "$STATE_DIR/test1.json" '.project_name' 'my-project'
 assert_json_eq "$STATE_DIR/test1.json" '.cwd' '/tmp/my-project'
 assert_json_eq "$STATE_DIR/test1.json" '.status' 'idle'
-# timestamp should be ISO 8601
-actual_ts=$(jq -r '.timestamp' "$STATE_DIR/test1.json")
-if [[ "$actual_ts" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]; then
-  inc_passed
-else
-  echo "  FAIL: timestamp '$actual_ts' doesn't match ISO 8601 format"
-  inc_failed
-fi
+assert_json_match "$STATE_DIR/test1.json" '.timestamp' '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$'
 
 # --- session-start stores pid ---
 echo "pid tracking"
-pid_val=$(jq '.pid' "$STATE_DIR/test1.json")
-if [[ "$pid_val" =~ ^[0-9]+$ ]]; then
-  inc_passed
-else
-  echo "  FAIL: pid '$pid_val' is not a number"
-  inc_failed
-fi
+assert_json_match "$STATE_DIR/test1.json" '.pid' '^[0-9]+$'
 
 # --- prompt-submit → active ---
 echo "prompt-submit"
@@ -104,13 +103,7 @@ assert_json_eq "$STATE_DIR/test1.json" '.session_id' 'test1'
 assert_json_eq "$STATE_DIR/test1.json" '.project_name' 'my-project'
 assert_json_eq "$STATE_DIR/test1.json" '.cwd' '/tmp/my-project'
 # pid survives status transitions
-pid_after=$(jq '.pid' "$STATE_DIR/test1.json")
-if [[ "$pid_after" =~ ^[0-9]+$ ]]; then
-  inc_passed
-else
-  echo "  FAIL: pid '$pid_after' lost after status transitions"
-  inc_failed
-fi
+assert_json_match "$STATE_DIR/test1.json" '.pid' '^[0-9]+$'
 
 # --- session-end removes state file ---
 echo "session-end"
@@ -151,7 +144,6 @@ else
 fi
 
 # --- results ---
-rm -rf "$HOME"
 echo ""
 echo "$passed passed, $failed failed"
 [ "$failed" -eq 0 ]

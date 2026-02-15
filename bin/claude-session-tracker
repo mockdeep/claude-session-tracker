@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-STATE_DIR="$HOME/.local/state/claude-sessions"
+STATE_DIR="${CLAUDE_SESSION_STATE_DIR:-$HOME/.local/state/claude-sessions}"
 mkdir -p "$STATE_DIR"
 
 action="${1:-}"
