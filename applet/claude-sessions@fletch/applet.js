@@ -9,6 +9,8 @@ const Mainloop = imports.mainloop;
 const STATE_DIR = GLib.build_filenamev([GLib.get_home_dir(), '.local', 'state', 'claude-sessions']);
 const DEFAULT_COLOR = '#cc241d';
 const DOT_SIZE = 12;
+const POLL_INTERVAL_SECONDS = 2;
+const MENU_REFRESH_SECONDS = 30;
 
 class ClaudeSessionsApplet extends Applet.Applet {
     constructor(metadata, orientation, panelHeight, instanceId) {
@@ -24,39 +26,59 @@ class ClaudeSessionsApplet extends Applet.Applet {
         this.menuManager.addMenu(this.menu);
 
         this._sessions = {};
-        this._debounceId = null;
-        this._timerId = null;
-        this._monitor = null;
+        this._pollTimerId = null;
+        this._menuTimerId = null;
+        this._lastMtimeMs = 0;
 
-        this._setupMonitor();
+        this._ensureStateDir();
         this._refresh();
+        this._startPollTimer();
     }
 
-    _setupMonitor() {
+    _ensureStateDir() {
         let dir = Gio.File.new_for_path(STATE_DIR);
-
         try {
             dir.make_directory_with_parents(null);
         } catch (e) {
             if (!e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.EXISTS)) {
                 global.logError(`Claude Sessions: failed to create state dir: ${e.message}`);
-                return;
             }
         }
-
-        this._monitor = dir.monitor_directory(Gio.FileMonitorFlags.NONE, null);
-        this._monitor.connect('changed', () => this._debounceRefresh());
     }
 
-    _debounceRefresh() {
-        if (this._debounceId) {
-            Mainloop.source_remove(this._debounceId);
+    _getDirMtime() {
+        // Check directory mtime as a cheap signal that contents changed
+        try {
+            let dir = Gio.File.new_for_path(STATE_DIR);
+            let info = dir.query_info('time::modified-usec,time::modified', Gio.FileQueryInfoFlags.NONE, null);
+            return info.get_attribute_uint64('time::modified') * 1000 +
+                   Math.floor(info.get_attribute_uint32('time::modified-usec') / 1000);
+        } catch (e) {
+            return 0;
         }
-        this._debounceId = Mainloop.timeout_add(250, () => {
-            this._debounceId = null;
+    }
+
+    _pollCheck() {
+        let mtime = this._getDirMtime();
+        if (mtime !== this._lastMtimeMs) {
+            this._lastMtimeMs = mtime;
             this._refresh();
-            return GLib.SOURCE_REMOVE;
+        }
+        return GLib.SOURCE_CONTINUE;
+    }
+
+    _startPollTimer() {
+        if (this._pollTimerId) return;
+        this._pollTimerId = Mainloop.timeout_add_seconds(POLL_INTERVAL_SECONDS, () => {
+            return this._pollCheck();
         });
+    }
+
+    _stopPollTimer() {
+        if (this._pollTimerId) {
+            Mainloop.source_remove(this._pollTimerId);
+            this._pollTimerId = null;
+        }
     }
 
     _refresh() {
@@ -120,12 +142,12 @@ class ClaudeSessionsApplet extends Applet.Applet {
 
         if (waiting.length === 0) {
             this.actor.hide();
-            this._stopTimer();
+            this._stopMenuTimer();
             return;
         }
 
         this.actor.show();
-        this._startTimer();
+        this._startMenuTimer();
 
         for (let session of waiting) {
             let color = session.theme_color || DEFAULT_COLOR;
@@ -186,19 +208,18 @@ class ClaudeSessionsApplet extends Applet.Applet {
         }
     }
 
-    _startTimer() {
-        if (this._timerId) return;
-        this._timerId = Mainloop.timeout_add_seconds(30, () => {
+    _startMenuTimer() {
+        if (this._menuTimerId) return;
+        this._menuTimerId = Mainloop.timeout_add_seconds(MENU_REFRESH_SECONDS, () => {
             this._rebuildMenu();
-            this._updatePanel();
             return GLib.SOURCE_CONTINUE;
         });
     }
 
-    _stopTimer() {
-        if (this._timerId) {
-            Mainloop.source_remove(this._timerId);
-            this._timerId = null;
+    _stopMenuTimer() {
+        if (this._menuTimerId) {
+            Mainloop.source_remove(this._menuTimerId);
+            this._menuTimerId = null;
         }
     }
 
@@ -207,15 +228,8 @@ class ClaudeSessionsApplet extends Applet.Applet {
     }
 
     on_applet_removed_from_panel() {
-        this._stopTimer();
-        if (this._debounceId) {
-            Mainloop.source_remove(this._debounceId);
-            this._debounceId = null;
-        }
-        if (this._monitor) {
-            this._monitor.cancel();
-            this._monitor = null;
-        }
+        this._stopPollTimer();
+        this._stopMenuTimer();
     }
 }
 
