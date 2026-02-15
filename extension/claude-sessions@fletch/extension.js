@@ -6,11 +6,13 @@ const Mainloop = imports.mainloop;
 
 const STATE_DIR = GLib.build_filenamev([GLib.get_home_dir(), '.local', 'state', 'claude-sessions']);
 const DEFAULT_COLOR = '#cc241d';
-const DOT_SIZE = 12;
+const DOT_SIZE = 36;
+const DOT_SPACING = 16;
+const GRID_COLUMNS = 2;
 const POLL_INTERVAL_SECONDS = 1;
 const PULSE_INTERVAL_MS = 80;
 const PULSE_MIN_OPACITY = 100;
-const PULSE_MAX_OPACITY = 255;
+const PULSE_MAX_OPACITY = 200;
 const PULSE_STEP = 8;
 const EDGE_OFFSET = 10;
 
@@ -32,6 +34,7 @@ class ClaudeSessionsExtension {
         this._allocationId = 0;
         this._widget = null;
         this._container = null;
+        this._tooltip = null;
     }
 
     enable() {
@@ -65,6 +68,7 @@ class ClaudeSessionsExtension {
             this._widget.disconnect(this._allocationId);
             this._allocationId = 0;
         }
+        this._hideTooltip();
         if (this._widget) {
             Main.layoutManager.removeChrome(this._widget);
             this._widget.destroy();
@@ -81,14 +85,12 @@ class ClaudeSessionsExtension {
         this._widget = new St.BoxLayout({
             vertical: true,
             reactive: true,
-            style: 'background-color: rgba(30, 30, 30, 0.5);'
-                 + 'border-radius: 8px;'
-                 + 'padding: 6px 8px;',
+            style: 'padding: 8px;',
         });
 
         this._container = new St.BoxLayout({
             vertical: true,
-            style: 'spacing: 4px;',
+            style: `spacing: ${DOT_SPACING}px;`,
         });
         this._widget.add_child(this._container);
 
@@ -239,6 +241,11 @@ class ClaudeSessionsExtension {
         this._pulsingDots = [];
         this._container.destroy_all_children();
 
+        if (this._tooltip) {
+            this._tooltip.destroy();
+            this._tooltip = null;
+        }
+
         if (sessions.length === 0) {
             this._widget.hide();
             return;
@@ -246,84 +253,105 @@ class ClaudeSessionsExtension {
 
         this._widget.show();
 
-        for (let session of sessions) {
+        // Build rows of GRID_COLUMNS dots each
+        let currentRow = null;
+        for (let i = 0; i < sessions.length; i++) {
+            if (i % GRID_COLUMNS === 0) {
+                currentRow = new St.BoxLayout({
+                    vertical: false,
+                    style: `spacing: ${DOT_SPACING}px;`,
+                });
+                this._container.add_child(currentRow);
+            }
+
+            let session = sessions[i];
             let color = session.theme_color || DEFAULT_COLOR;
             let isPermission = session.status === 'permission';
             let isWaiting = isPermission || session.status === 'idle';
             let isFocused = session.window_id && parseInt(session.window_id) === this._focusedXid;
 
-            let border = isPermission
-                ? 'border: 2px solid #ffffff;'
-                : 'border: 2px solid transparent;';
+            let borderStyle = isPermission
+                ? 'border: 3px solid #ffffff;'
+                : isFocused
+                    ? 'border: 3px solid rgba(255, 255, 255, 0.6);'
+                    : 'border: 3px solid transparent;';
 
             let dot = new St.Bin({
+                reactive: true,
+                track_hover: true,
                 style: `background-color: ${color};`
                      + `width: ${DOT_SIZE}px; height: ${DOT_SIZE}px;`
                      + `border-radius: ${DOT_SIZE}px;`
-                     + border,
-                opacity: 255,
+                     + `box-shadow: 0 0 8px 4px ${color};`
+                     + borderStyle,
+                opacity: 200,
             });
 
             if (!isWaiting) {
                 this._pulsingDots.push(dot);
             }
 
+            // Hover tooltip
             let icon = this._statusIcon(session.status);
             let elapsed = this._formatElapsed(session.timestamp);
-            let labelText = `${icon} ${session.project_name || '?'}  ${elapsed}`.trim();
+            let tooltipText = `${icon} ${session.project_name || '?'}  ${elapsed}`.trim();
 
-            let label = new St.Label({
-                text: labelText,
-                style: 'color: #e0e0e0; font-size: 11px; margin-left: 6px;',
-                y_align: imports.gi.Clutter.ActorAlign.CENTER,
-            });
-
-            let focusBg = isFocused ? 'rgba(255, 255, 255, 0.15)' : 'transparent';
-            let row = new St.BoxLayout({
-                vertical: false,
-                reactive: true,
-                track_hover: true,
-                style: `spacing: 0px; padding: 3px 6px;`
-                     + `border-radius: 4px;`
-                     + `background-color: ${focusBg};`,
-            });
-            row.add_child(dot);
-            row.add_child(label);
-
-            row.connect('style-changed', () => {
-                if (row.hover) {
-                    row.set_style(row.get_style().replace(
-                        /background-color:[^;]+/,
-                        'background-color: rgba(255, 255, 255, 0.1)'
-                    ));
-                }
-            });
-            row.connect('enter-event', () => {
-                if (!isFocused) {
-                    row.style = `spacing: 0px; padding: 3px 6px;`
-                              + `border-radius: 4px;`
-                              + `background-color: rgba(255, 255, 255, 0.1);`;
-                }
+            dot.connect('enter-event', () => {
+                this._showTooltip(dot, tooltipText);
                 return false;
             });
-            row.connect('leave-event', () => {
-                row.style = `spacing: 0px; padding: 3px 6px;`
-                          + `border-radius: 4px;`
-                          + `background-color: ${focusBg};`;
+            dot.connect('leave-event', () => {
+                this._hideTooltip();
                 return false;
             });
 
             let sessionId = session.session_id;
-            row.connect('button-release-event', () => {
+            dot.connect('button-release-event', () => {
                 this._focusSession(sessionId);
                 return true;
             });
 
-            this._container.add_child(row);
+            currentRow.add_child(dot);
         }
 
         if (this._pulsingDots.length > 0) {
             this._startPulseTimer();
+        }
+    }
+
+    _showTooltip(actor, text) {
+        this._hideTooltip();
+
+        this._tooltip = new St.Label({
+            text: text,
+            style: 'background-color: rgba(20, 20, 20, 0.9);'
+                 + 'color: #e0e0e0; font-size: 11px;'
+                 + 'padding: 4px 8px; border-radius: 4px;',
+        });
+        Main.layoutManager.addChrome(this._tooltip, {
+            affectsInputRegion: false,
+            affectsStruts: false,
+        });
+
+        // Position above the dot, centered horizontally
+        let [actorX, actorY] = actor.get_transformed_position();
+        let actorW = actor.get_width();
+        // Force allocation so we can measure
+        this._tooltip.get_allocation_box();
+        let tipW = this._tooltip.get_width();
+        let tipH = this._tooltip.get_height();
+
+        this._tooltip.set_position(
+            Math.round(actorX + actorW / 2 - tipW / 2),
+            Math.round(actorY - tipH - 4)
+        );
+    }
+
+    _hideTooltip() {
+        if (this._tooltip) {
+            Main.layoutManager.removeChrome(this._tooltip);
+            this._tooltip.destroy();
+            this._tooltip = null;
         }
     }
 
