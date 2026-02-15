@@ -1,5 +1,4 @@
 const Applet = imports.ui.applet;
-const PopupMenu = imports.ui.popupMenu;
 const Gio = imports.gi.Gio;
 const GLib = imports.gi.GLib;
 const St = imports.gi.St;
@@ -10,24 +9,18 @@ const STATE_DIR = GLib.build_filenamev([GLib.get_home_dir(), '.local', 'state', 
 const DEFAULT_COLOR = '#cc241d';
 const DOT_SIZE = 12;
 const POLL_INTERVAL_SECONDS = 2;
-const MENU_REFRESH_SECONDS = 30;
 
 class ClaudeSessionsApplet extends Applet.Applet {
     constructor(metadata, orientation, panelHeight, instanceId) {
         super(orientation, panelHeight, instanceId);
 
-        this.set_applet_tooltip('Claude Sessions');
+        this.set_applet_tooltip('');
 
         this._dotBox = new St.BoxLayout({ style: 'spacing: 4px;' });
         this.actor.add(this._dotBox);
 
-        this.menuManager = new PopupMenu.PopupMenuManager(this);
-        this.menu = new Applet.AppletPopupMenu(this, orientation);
-        this.menuManager.addMenu(this.menu);
-
         this._sessions = {};
         this._pollTimerId = null;
-        this._menuTimerId = null;
         this._lastMtimeMs = 0;
 
         this._ensureStateDir();
@@ -115,7 +108,6 @@ class ClaudeSessionsApplet extends Applet.Applet {
         }
 
         this._updatePanel();
-        this._rebuildMenu();
     }
 
     _getWaitingSessions() {
@@ -142,12 +134,10 @@ class ClaudeSessionsApplet extends Applet.Applet {
 
         if (waiting.length === 0) {
             this.actor.hide();
-            this._stopMenuTimer();
             return;
         }
 
         this.actor.show();
-        this._startMenuTimer();
 
         for (let session of waiting) {
             let color = session.theme_color || DEFAULT_COLOR;
@@ -158,10 +148,31 @@ class ClaudeSessionsApplet extends Applet.Applet {
                 : 'border: 2px solid transparent;';
 
             let dot = new St.Bin({
+                reactive: true,
+                track_hover: true,
                 style: `background-color: ${color}; `
                      + `width: ${DOT_SIZE}px; height: ${DOT_SIZE}px; `
                      + `border-radius: ${DOT_SIZE}px; `
                      + border,
+            });
+
+            let sessionId = session.session_id;
+            dot.connect('button-release-event', () => {
+                Util.spawnCommandLine(`bash -c 'echo "{\\"session_id\\":\\"${sessionId}\\"}" | claude-session-tracker focus'`);
+                return true;
+            });
+
+            let elapsed = this._formatElapsed(session.timestamp);
+            let icon = this._statusIcon(session.status);
+            let tipText = `${icon} ${session.project_name}  (${session.status}, ${elapsed})`;
+
+            dot.connect('enter-event', () => {
+                this.set_applet_tooltip(tipText);
+                return false;
+            });
+            dot.connect('leave-event', () => {
+                this.set_applet_tooltip('');
+                return false;
             });
 
             this._dotBox.add_child(dot);
@@ -188,48 +199,8 @@ class ClaudeSessionsApplet extends Applet.Applet {
         return '';
     }
 
-    _rebuildMenu() {
-        this.menu.removeAll();
-
-        let waiting = this._getWaitingSessions();
-        if (waiting.length === 0) return;
-
-        for (let session of waiting) {
-            let elapsed = this._formatElapsed(session.timestamp);
-            let icon = this._statusIcon(session.status);
-            let label = `${icon} ${session.project_name}  (${session.status}, ${elapsed})`;
-
-            let item = new PopupMenu.PopupMenuItem(label);
-            let sessionId = session.session_id;
-            item.connect('activate', () => {
-                Util.spawnCommandLine(`bash -c 'echo "{\\"session_id\\":\\"${sessionId}\\"}" | claude-session-tracker focus'`);
-            });
-            this.menu.addMenuItem(item);
-        }
-    }
-
-    _startMenuTimer() {
-        if (this._menuTimerId) return;
-        this._menuTimerId = Mainloop.timeout_add_seconds(MENU_REFRESH_SECONDS, () => {
-            this._rebuildMenu();
-            return GLib.SOURCE_CONTINUE;
-        });
-    }
-
-    _stopMenuTimer() {
-        if (this._menuTimerId) {
-            Mainloop.source_remove(this._menuTimerId);
-            this._menuTimerId = null;
-        }
-    }
-
-    on_applet_clicked() {
-        this.menu.toggle();
-    }
-
     on_applet_removed_from_panel() {
         this._stopPollTimer();
-        this._stopMenuTimer();
     }
 }
 
