@@ -164,14 +164,9 @@ class ClaudeSessionsApplet extends Applet.Applet {
             let isWaiting = isPermission || session.status === 'idle';
             let isFocused = session.window_id && parseInt(session.window_id) === this._focusedXid;
 
-            let border;
-            if (isPermission) {
-                border = 'border: 2px solid #ffffff;';
-            } else if (session.status === 'idle') {
-                border = 'border: 2px solid #f0c040;';
-            } else {
-                border = 'border: 2px solid transparent;';
-            }
+            let border = isPermission
+                ? 'border: 2px solid #ffffff;'
+                : 'border: 2px solid transparent;';
 
             let dot = new St.Bin({
                 style: `background-color: ${color}; `
@@ -181,7 +176,7 @@ class ClaudeSessionsApplet extends Applet.Applet {
                 opacity: 255,
             });
 
-            if (isWaiting) {
+            if (!isWaiting) {
                 this._pulsingDots.push(dot);
             }
 

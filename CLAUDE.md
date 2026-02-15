@@ -15,7 +15,7 @@ State flow: Claude Code hooks → stdin JSON → `claude-session-tracker` → wr
 
 Window focusing: The hook script finds the terminal window by writing a temporary marker to the PTY title and using `xdotool search`. The `focus` action uses `wmctrl -i -a` with hex window ID for cross-workspace activation.
 
-Theme colors: On `session-start`, the hook walks up from `$cwd` looking for `.terminal-theme`, resolves the theme file from `$DOT_PATH/bash/terminal-themes/` (or `~/Dropbox/dotfiles/bash/terminal-themes/`), and extracts `prompt_fill` into `theme_color` in the session JSON. The applet renders each session as a colored dot using this value (fallback: `#cc241d`). Permission sessions get a white border; idle sessions are solid dots; active sessions are dimmed (50% opacity).
+Theme colors: On `session-start`, the hook walks up from `$cwd` looking for `.terminal-theme`, resolves the theme file from `$DOT_PATH/bash/terminal-themes/` (or `~/Dropbox/dotfiles/bash/terminal-themes/`), and extracts `prompt_fill` into `theme_color` in the session JSON. The applet renders each session as a colored dot using this value (fallback: `#cc241d`). Visual states: permission dots have a white border; idle and active dots have no border. Active (busy) dots pulse (opacity cycles 100–255) to convey work in progress; idle and permission dots stay at full opacity.
 
 Focus tracking: The applet listens to `global.display` `notify::focus-window` to detect which window is active. When the focused window matches a session's `window_id`, a white underline bar appears beneath that dot. Each dot is clickable (focuses the session's terminal) and has a hover tooltip showing project name, status, and elapsed time (via the applet's `PanelItemTooltip`).
 
