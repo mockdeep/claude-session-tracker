@@ -2,7 +2,6 @@ const Applet = imports.ui.applet;
 const Gio = imports.gi.Gio;
 const GLib = imports.gi.GLib;
 const St = imports.gi.St;
-const Util = imports.misc.util;
 const Mainloop = imports.mainloop;
 
 const STATE_DIR = GLib.build_filenamev([GLib.get_home_dir(), '.local', 'state', 'claude-sessions']);
@@ -190,7 +189,7 @@ class ClaudeSessionsApplet extends Applet.Applet {
 
             let sessionId = session.session_id;
             container.connect('button-release-event', () => {
-                Util.spawnCommandLine(`bash -c 'echo "{\\"session_id\\":\\"${sessionId}\\"}" | claude-session-tracker focus'`);
+                this._focusSession(sessionId);
                 return true;
             });
 
@@ -235,6 +234,27 @@ class ClaudeSessionsApplet extends Applet.Applet {
         if (this._pulseTimerId) {
             Mainloop.source_remove(this._pulseTimerId);
             this._pulseTimerId = null;
+        }
+    }
+
+    _focusSession(sessionId) {
+        try {
+            let payload = JSON.stringify({ session_id: sessionId });
+            let [ok, pid, stdinFd] = GLib.spawn_async_with_pipes(
+                null, // working directory
+                ['claude-session-tracker', 'focus'],
+                null, // env (inherit)
+                GLib.SpawnFlags.SEARCH_PATH | GLib.SpawnFlags.DO_NOT_REAP_CHILD,
+                null  // child setup
+            );
+            if (ok && stdinFd !== -1) {
+                let stdinStream = new Gio.UnixOutputStream({ fd: stdinFd, close_fd: true });
+                stdinStream.write_all(payload, null);
+                stdinStream.close(null);
+            }
+            GLib.spawn_close_pid(pid);
+        } catch (e) {
+            global.logError(`Claude Sessions: failed to focus session: ${e.message}`);
         }
     }
 

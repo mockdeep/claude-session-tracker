@@ -42,3 +42,4 @@ Runtime: `xdotool`, `jq`, `wmctrl`, Cinnamon desktop. No build tools or package 
 - Applet uses Cinnamon's CJS (imports.gi/imports.ui), not ES modules or Node.
 - The applet hides itself when no sessions exist (count == 0). All sessions are shown (active, idle, permission).
 - The applet extends `Applet.Applet` (not `TextIconApplet`) and manages its own `St.BoxLayout` of dot containers. Each container is a vertical `St.BoxLayout` holding a colored dot and a focus indicator bar.
+- The applet spawns external commands via `GLib.spawn_async_with_pipes` with argv arrays, never shell string interpolation, to avoid command injection. Data (e.g. session IDs) is passed via stdin, not embedded in command strings.
