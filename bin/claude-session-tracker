@@ -93,6 +93,21 @@ find_window_id() {
   echo "${wid:-}"
 }
 
+find_claude_pid() {
+  local pid=$PPID
+  while [ "$pid" -gt 1 ]; do
+    local comm
+    comm=$(cat /proc/"$pid"/comm 2>/dev/null || echo "")
+    if [ "$comm" = "claude" ]; then
+      echo "$pid"
+      return
+    fi
+    pid=$(awk '{print $4}' /proc/"$pid"/stat 2>/dev/null || echo 1)
+  done
+  # Fallback to PPID if claude process not found
+  echo "$PPID"
+}
+
 update_state() {
   local new_status="$1"
   if [ -f "$state_file" ]; then
@@ -118,7 +133,7 @@ case "$action" in
       --arg wid "$window_id" \
       --arg tc "$theme_color" \
       --arg ts "$timestamp" \
-      --argjson pid "$PPID" \
+      --argjson pid "$(find_claude_pid)" \
       '{
         session_id: $sid,
         cwd: $cwd,

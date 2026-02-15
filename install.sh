@@ -18,10 +18,16 @@ ln -sf "$SCRIPT_DIR/bin/claude-session-tracker" "$HOME/.local/bin/claude-session
 chmod +x "$SCRIPT_DIR/bin/claude-session-tracker"
 echo "Linked claude-session-tracker → ~/.local/bin/"
 
-# Symlink applet
-mkdir -p "$HOME/.local/share/cinnamon/applets"
-ln -sfn "$SCRIPT_DIR/applet/claude-sessions@fletch" "$HOME/.local/share/cinnamon/applets/claude-sessions@fletch"
-echo "Linked applet → ~/.local/share/cinnamon/applets/claude-sessions@fletch/"
+# Remove old applet symlink if it exists
+if [ -L "$HOME/.local/share/cinnamon/applets/claude-sessions@fletch" ] || [ -e "$HOME/.local/share/cinnamon/applets/claude-sessions@fletch" ]; then
+  rm -f "$HOME/.local/share/cinnamon/applets/claude-sessions@fletch"
+  echo "Removed old applet symlink"
+fi
+
+# Symlink extension
+mkdir -p "$HOME/.local/share/cinnamon/extensions"
+ln -sfn "$SCRIPT_DIR/extension/claude-sessions@fletch" "$HOME/.local/share/cinnamon/extensions/claude-sessions@fletch"
+echo "Linked extension → ~/.local/share/cinnamon/extensions/claude-sessions@fletch/"
 
 # Create state directory
 mkdir -p "$HOME/.local/state/claude-sessions"
@@ -70,5 +76,6 @@ fi
 
 echo ""
 echo "Done! Next steps:"
-echo "  1. Right-click your Cinnamon panel → Applets → find 'Claude Sessions' → add"
-echo "  2. Start a Claude Code session to verify"
+echo "  1. Reload Cinnamon (Alt+F2 → r) or log out and back in"
+echo "  2. Enable in System Settings → Extensions → 'Claude Sessions'"
+echo "  3. Start a Claude Code session to verify"

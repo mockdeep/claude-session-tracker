@@ -4,26 +4,34 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A Cinnamon desktop panel applet + Claude Code hook script for tracking multiple Claude Code sessions. Two components communicate via JSON state files in `~/.local/state/claude-sessions/`:
+A Cinnamon desktop extension + Claude Code hook script for tracking multiple Claude Code sessions. Two components communicate via JSON state files in `~/.local/state/claude-sessions/`:
 
 - **`bin/claude-session-tracker`** — Bash script invoked by Claude Code hooks. Manages per-session JSON state files keyed by session ID. Actions: `session-start`, `notification-idle`, `notification-permission`, `prompt-submit`, `session-end`, `focus`.
-- **`applet/claude-sessions@fletch/applet.js`** — Cinnamon applet (GJS/CJS). Monitors the state directory via polling, shows per-session colored dots in the panel. Each dot is individually clickable to focus its terminal window, with hover tooltips showing session details.
+- **`extension/claude-sessions@fletch/extension.js`** — Cinnamon extension (GJS/CJS). Monitors the state directory via polling, shows a floating widget in the bottom-right corner with per-session rows (colored dot + project name + status + elapsed time). Each row is clickable to focus its terminal window.
 
 ## Architecture
 
-State flow: Claude Code hooks → stdin JSON → `claude-session-tracker` → writes `~/.local/state/claude-sessions/<session_id>.json` → applet polls directory mtime every 2s → reads all JSON files → updates panel.
+State flow: Claude Code hooks → stdin JSON → `claude-session-tracker` → writes `~/.local/state/claude-sessions/<session_id>.json` → extension polls directory every 1s → reads all JSON files → updates widget.
+
+PID tracking: On `session-start`, the hook script walks up the process tree from `$PPID` to find the actual `claude` process (Claude Code spawns hooks via intermediate shells that exit immediately). The PID is stored in the session JSON so the extension can reap stale sessions whose process has exited. If no `claude` process is found in the ancestor chain, falls back to `$PPID`.
+
+Widget positioning: The extension uses `Main.layoutManager.addChrome()` to create a floating widget that stays above all windows, receives click input, but doesn't appear in alt-tab. Positioned bottom-right of the primary monitor, offset 10px from edges and above any bottom panel (height read from `Main.panelManager.panels`). Repositioned on `monitors-changed` and `allocation-changed`.
 
 Window focusing: The hook script finds the terminal window by writing a temporary marker to the PTY title and using `xdotool search`. The `focus` action uses `wmctrl -i -a` with hex window ID for cross-workspace activation.
 
-Theme colors: On `session-start`, the hook walks up from `$cwd` looking for `.terminal-theme`, resolves the theme file from `$DOT_PATH/bash/terminal-themes/` (or `~/Dropbox/dotfiles/bash/terminal-themes/`), and extracts `prompt_fill` into `theme_color` in the session JSON. The applet renders each session as a colored dot using this value (fallback: `#cc241d`). Visual states: permission dots have a white border; idle and active dots have no border. Active (busy) dots pulse (opacity cycles 100–255) to convey work in progress; idle and permission dots stay at full opacity.
+Theme colors: On `session-start`, the hook walks up from `$cwd` looking for `.terminal-theme`, resolves the theme file from `$DOT_PATH/bash/terminal-themes/` (or `~/Dropbox/dotfiles/bash/terminal-themes/`), and extracts `prompt_fill` into `theme_color` in the session JSON. The extension renders each session as a colored dot using this value (fallback: `#cc241d`). Visual states: permission dots have a white border; idle and active dots have no border. Active (busy) dots pulse (opacity cycles 100–255) to convey work in progress; idle and permission dots stay at full opacity.
 
-Focus tracking: The applet listens to `global.display` `notify::focus-window` to detect which window is active. When the focused window matches a session's `window_id`, a white underline bar appears beneath that dot. Each dot is clickable (focuses the session's terminal) and has a hover tooltip showing project name, status, and elapsed time (via the applet's `PanelItemTooltip`).
+Focus tracking: The extension listens to `global.display` `notify::focus-window` to detect which window is active. When the focused window matches a session's `window_id`, the row gets a subtle white background highlight. Each row is clickable (focuses the session's terminal) with hover highlight.
 
 ## Install & Test
 
 ```bash
-./install.sh          # symlinks bin + applet, creates state dir, configures Claude hooks
+./install.sh          # symlinks bin + extension, creates state dir, configures Claude hooks
 ```
+
+After install: reload Cinnamon (`Alt+F2 → r`) and enable in System Settings → Extensions.
+
+Dev reload: `./dev-reload.sh` sends a D-Bus `ReloadExtension` call. For extensions this re-runs `disable()` + `enable()` but does **not** re-evaluate the JS file — a full Cinnamon restart (`Alt+F2 → r`) is needed to pick up code changes.
 
 Manual test (no build step):
 ```bash
@@ -32,6 +40,8 @@ cat ~/.local/state/claude-sessions/test.json
 echo '{"session_id":"test","cwd":"/tmp"}' | ~/.local/bin/claude-session-tracker session-end
 ```
 
+Note: manual test sessions created from a shell will be reaped by the extension's PID check (the hook script's `$PPID` exits immediately). To test without reaping, write a JSON file directly with a long-lived PID (e.g. `"pid": 1`).
+
 ## Dependencies
 
 Runtime: `xdotool`, `jq`, `wmctrl`, Cinnamon desktop. No build tools or package managers.
@@ -39,7 +49,7 @@ Runtime: `xdotool`, `jq`, `wmctrl`, Cinnamon desktop. No build tools or package 
 ## Conventions
 
 - Bash scripts use `set -euo pipefail`. State file writes use atomic tmp+mv pattern.
-- Applet uses Cinnamon's CJS (imports.gi/imports.ui), not ES modules or Node.
-- The applet hides itself when no sessions exist (count == 0). All sessions are shown (active, idle, permission).
-- The applet extends `Applet.Applet` (not `TextIconApplet`) and manages its own `St.BoxLayout` of dot containers. Each container is a vertical `St.BoxLayout` holding a colored dot and a focus indicator bar.
-- The applet spawns external commands via `GLib.spawn_async_with_pipes` with argv arrays, never shell string interpolation, to avoid command injection. Data (e.g. session IDs) is passed via stdin, not embedded in command strings.
+- Extension uses Cinnamon's CJS (imports.gi/imports.ui), not ES modules or Node.
+- The extension hides itself when no sessions exist (count == 0). All sessions are shown (active, idle, permission).
+- The extension exports `init(metadata)`, `enable()`, `disable()` per the Cinnamon extension API. Widget is created via `St.BoxLayout` with session rows containing a colored dot and label.
+- The extension spawns external commands via `GLib.spawn_async_with_pipes` with argv arrays, never shell string interpolation, to avoid command injection. Data (e.g. session IDs) is passed via stdin, not embedded in command strings.
