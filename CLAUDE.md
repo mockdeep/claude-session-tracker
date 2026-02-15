@@ -6,8 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A Cinnamon desktop extension + Claude Code hook script for tracking multiple Claude Code sessions. Two components communicate via JSON state files in `~/.local/state/claude-sessions/`:
 
-- **`bin/claude-session-tracker`** — Bash script invoked by Claude Code hooks. Manages per-session JSON state files keyed by session ID. Actions: `session-start`, `notification-idle`, `notification-permission`, `prompt-submit`, `session-end`, `focus`.
-- **`extension/claude-sessions@fletch/extension.js`** — Cinnamon extension (GJS/CJS). Monitors the state directory via polling, shows a floating widget in the bottom-right corner with per-session rows (colored dot + project name + status + elapsed time). Each row is clickable to focus its terminal window.
+- **`bin/claude-session-tracker`** — Bash script invoked by Claude Code hooks. Manages per-session JSON state files keyed by session ID. Actions: `session-start`, `notification-idle`, `notification-permission`, `prompt-submit`, `tool-active`, `session-end`, `focus`.
+- **`extension/claude-sessions@fletch/extension.js`** — Cinnamon extension (GJS/CJS). Monitors the state directory via polling, shows a floating widget in the bottom-right corner with colored dots in a grid (2 columns). Hover shows a tooltip with status icon, project name, and elapsed time. Each dot is clickable to focus its terminal window.
 
 ## Architecture
 
@@ -19,9 +19,9 @@ Widget positioning: The extension uses `Main.layoutManager.addChrome()` to creat
 
 Window focusing: The hook script finds the terminal window by writing a temporary marker to the PTY title and using `xdotool search`. The `focus` action uses `wmctrl -i -a` with hex window ID for cross-workspace activation. For Gnome Terminal tab switching, `session-start` reads `_GTK_WINDOW_OBJECT_PATH` from `xprop` to get the D-Bus window path, then queries the `active-tab` state (the tab is active at launch time, so its index is the current value). On `focus`, after raising the window, `gdbus` calls `org.gtk.Actions.Activate active-tab` with the stored tab index.
 
-Theme colors: On `session-start`, the hook walks up from `$cwd` looking for `.terminal-theme`, resolves the theme file from `$DOT_PATH/bash/terminal-themes/` (or `~/Dropbox/dotfiles/bash/terminal-themes/`), and extracts `prompt_fill` into `theme_color` in the session JSON. The extension renders each session as a colored dot using this value (fallback: `#cc241d`). Visual states: permission dots have a white border; idle and active dots have no border. Active (busy) dots pulse (opacity cycles 100–255) to convey work in progress; idle and permission dots stay at full opacity.
+Theme colors: On `session-start`, the hook walks up from `$cwd` looking for `.terminal-theme`, resolves the theme file from `$DOT_PATH/bash/terminal-themes/` (or `~/Dropbox/dotfiles/bash/terminal-themes/`), and extracts `prompt_fill` into `theme_color` in the session JSON. The extension renders each session as a colored dot using this value (fallback: `#cc241d`). Visual states: permission dots have a white border; idle and active dots have no border. Active (busy) dots pulse (opacity cycles 100–200) to convey work in progress; idle and permission dots stay at full opacity.
 
-Focus tracking: The extension listens to `global.display` `notify::focus-window` to detect which window is active. When the focused window matches a session's `window_id`, the row gets a subtle white background highlight. Each row is clickable (focuses the session's terminal) with hover highlight.
+Focus tracking: The extension listens to `global.display` `notify::focus-window` to detect which window is active. When the focused window matches a session's `window_id` (and `tab_index` if present), the dot renders a white inner circle. For tab-level focus detection, the extension subscribes to `org.gtk.Actions.Changed` D-Bus signals on each terminal window's object path, so tab switches update the focus dot instantly rather than waiting for the next poll cycle.
 
 ## Install & Test
 
@@ -51,5 +51,5 @@ Runtime: `xdotool`, `jq`, `wmctrl`, `xprop`, `gdbus`, Cinnamon desktop. No build
 - Bash scripts use `set -euo pipefail`. State file writes use atomic tmp+mv pattern.
 - Extension uses Cinnamon's CJS (imports.gi/imports.ui), not ES modules or Node.
 - The extension hides itself when no sessions exist (count == 0). All sessions are shown (active, idle, permission).
-- The extension exports `init(metadata)`, `enable()`, `disable()` per the Cinnamon extension API. Widget is created via `St.BoxLayout` with session rows containing a colored dot and label.
+- The extension exports `init(metadata)`, `enable()`, `disable()` per the Cinnamon extension API. Widget is created via `St.BoxLayout` with dots arranged in a grid.
 - The extension spawns external commands via `GLib.spawn_async_with_pipes` with argv arrays, never shell string interpolation, to avoid command injection. Data (e.g. session IDs) is passed via stdin, not embedded in command strings.
