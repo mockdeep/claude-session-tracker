@@ -9,6 +9,10 @@ const STATE_DIR = GLib.build_filenamev([GLib.get_home_dir(), '.local', 'state', 
 const DEFAULT_COLOR = '#cc241d';
 const DOT_SIZE = 12;
 const POLL_INTERVAL_SECONDS = 2;
+const PULSE_INTERVAL_MS = 80;
+const PULSE_MIN_OPACITY = 100;
+const PULSE_MAX_OPACITY = 255;
+const PULSE_STEP = 8;
 
 class ClaudeSessionsApplet extends Applet.Applet {
     constructor(metadata, orientation, panelHeight, instanceId) {
@@ -22,6 +26,10 @@ class ClaudeSessionsApplet extends Applet.Applet {
         this._sessions = {};
         this._focusedXid = 0;
         this._pollTimerId = null;
+        this._pulseTimerId = null;
+        this._pulsingDots = [];
+        this._pulseDirection = 1;
+        this._pulseOpacity = PULSE_MAX_OPACITY;
         this._lastMtimeMs = 0;
 
         this._focusSignalId = global.display.connect('notify::focus-window', () => {
@@ -139,6 +147,8 @@ class ClaudeSessionsApplet extends Applet.Applet {
     _updatePanel() {
         let sessions = this._getSortedSessions();
 
+        this._stopPulseTimer();
+        this._pulsingDots = [];
         this._dotBox.destroy_all_children();
 
         if (sessions.length === 0) {
@@ -154,17 +164,26 @@ class ClaudeSessionsApplet extends Applet.Applet {
             let isWaiting = isPermission || session.status === 'idle';
             let isFocused = session.window_id && parseInt(session.window_id) === this._focusedXid;
 
-            let border = isPermission
-                ? 'border: 2px solid #ffffff;'
-                : 'border: 2px solid transparent;';
+            let border;
+            if (isPermission) {
+                border = 'border: 2px solid #ffffff;';
+            } else if (session.status === 'idle') {
+                border = 'border: 2px solid #f0c040;';
+            } else {
+                border = 'border: 2px solid transparent;';
+            }
 
             let dot = new St.Bin({
                 style: `background-color: ${color}; `
                      + `width: ${DOT_SIZE}px; height: ${DOT_SIZE}px; `
                      + `border-radius: ${DOT_SIZE}px; `
                      + border,
-                opacity: isWaiting ? 255 : 128,
+                opacity: 255,
             });
+
+            if (isWaiting) {
+                this._pulsingDots.push(dot);
+            }
 
             let focusBar = new St.Bin({
                 style: `background-color: ${isFocused ? '#ffffff' : 'transparent'}; `
@@ -201,6 +220,35 @@ class ClaudeSessionsApplet extends Applet.Applet {
 
             this._dotBox.add_child(container);
         }
+
+        if (this._pulsingDots.length > 0) {
+            this._startPulseTimer();
+        }
+    }
+
+    _startPulseTimer() {
+        if (this._pulseTimerId) return;
+        this._pulseTimerId = Mainloop.timeout_add(PULSE_INTERVAL_MS, () => {
+            this._pulseOpacity += PULSE_STEP * this._pulseDirection;
+            if (this._pulseOpacity >= PULSE_MAX_OPACITY) {
+                this._pulseOpacity = PULSE_MAX_OPACITY;
+                this._pulseDirection = -1;
+            } else if (this._pulseOpacity <= PULSE_MIN_OPACITY) {
+                this._pulseOpacity = PULSE_MIN_OPACITY;
+                this._pulseDirection = 1;
+            }
+            for (let dot of this._pulsingDots) {
+                dot.opacity = this._pulseOpacity;
+            }
+            return GLib.SOURCE_CONTINUE;
+        });
+    }
+
+    _stopPulseTimer() {
+        if (this._pulseTimerId) {
+            Mainloop.source_remove(this._pulseTimerId);
+            this._pulseTimerId = null;
+        }
     }
 
     _formatElapsed(timestamp) {
@@ -225,6 +273,7 @@ class ClaudeSessionsApplet extends Applet.Applet {
 
     on_applet_removed_from_panel() {
         this._stopPollTimer();
+        this._stopPulseTimer();
         if (this._focusSignalId) {
             global.display.disconnect(this._focusSignalId);
             this._focusSignalId = 0;
