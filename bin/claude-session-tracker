@@ -70,11 +70,11 @@ find_window_id() {
   local pid=$$
   local pty=""
   while [ "$pid" -gt 1 ]; do
-    pty=$(readlink /proc/$pid/fd/0 2>/dev/null || true)
+    pty=$(readlink /proc/"$pid"/fd/0 2>/dev/null || true)
     if [[ "$pty" == /dev/pts/* ]]; then
       break
     fi
-    pid=$(awk '{print $4}' /proc/$pid/stat 2>/dev/null || echo 1)
+    pid=$(awk '{print $4}' /proc/"$pid"/stat 2>/dev/null || echo 1)
   done
 
   if [[ "$pty" != /dev/pts/* ]]; then

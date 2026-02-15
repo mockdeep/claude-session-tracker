@@ -4,6 +4,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TRACKER="$SCRIPT_DIR/bin/claude-session-tracker"
 
+# --- shellcheck ---
+echo "shellcheck"
+if ! shellcheck "$TRACKER"; then
+  echo "FAIL: shellcheck found issues"
+  exit 1
+fi
+
 # Use a temp state dir so we don't interfere with real sessions
 export HOME=$(mktemp -d)
 STATE_DIR="$HOME/.local/state/claude-sessions"
@@ -66,6 +73,16 @@ else
   inc_failed
 fi
 
+# --- session-start stores pid ---
+echo "pid tracking"
+pid_val=$(jq '.pid' "$STATE_DIR/test1.json")
+if [[ "$pid_val" =~ ^[0-9]+$ ]]; then
+  inc_passed
+else
+  echo "  FAIL: pid '$pid_val' is not a number"
+  inc_failed
+fi
+
 # --- prompt-submit → active ---
 echo "prompt-submit"
 echo '{"session_id":"test1","cwd":"/tmp/my-project"}' | "$TRACKER" prompt-submit
@@ -86,6 +103,14 @@ echo "field preservation"
 assert_json_eq "$STATE_DIR/test1.json" '.session_id' 'test1'
 assert_json_eq "$STATE_DIR/test1.json" '.project_name' 'my-project'
 assert_json_eq "$STATE_DIR/test1.json" '.cwd' '/tmp/my-project'
+# pid survives status transitions
+pid_after=$(jq '.pid' "$STATE_DIR/test1.json")
+if [[ "$pid_after" =~ ^[0-9]+$ ]]; then
+  inc_passed
+else
+  echo "  FAIL: pid '$pid_after' lost after status transitions"
+  inc_failed
+fi
 
 # --- session-end removes state file ---
 echo "session-end"
