@@ -272,9 +272,7 @@ class ClaudeSessionsExtension {
 
             let borderStyle = isPermission
                 ? 'border: 3px solid #ffffff;'
-                : isFocused
-                    ? 'border: 3px solid rgba(255, 255, 255, 0.6);'
-                    : 'border: 3px solid transparent;';
+                : 'border: 3px solid transparent;';
 
             let dot = new St.Bin({
                 reactive: true,
@@ -286,6 +284,15 @@ class ClaudeSessionsExtension {
                      + borderStyle,
                 opacity: 200,
             });
+
+            if (isFocused) {
+                let innerSize = Math.round(DOT_SIZE * 0.4);
+                dot.child = new St.Bin({
+                    style: `background-color: #ffffff;`
+                         + `width: ${innerSize}px; height: ${innerSize}px;`
+                         + `border-radius: ${innerSize}px;`,
+                });
+            }
 
             if (!isWaiting) {
                 this._pulsingDots.push(dot);
