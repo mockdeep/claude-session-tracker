@@ -147,6 +147,16 @@ case "$action" in
     mv "$local_tmp" "$state_file"
     ;;
 
+  tool-active)
+    # After a tool executes (permission was granted), go back to active
+    if [ -f "$state_file" ]; then
+      current_status=$(jq -r '.status // empty' "$state_file")
+      if [ "$current_status" = "permission" ]; then
+        update_state "active"
+      fi
+    fi
+    ;;
+
   notification-idle)
     update_state "idle"
     ;;

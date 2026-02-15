@@ -81,7 +81,7 @@ class ClaudeSessionsExtension {
         this._widget = new St.BoxLayout({
             vertical: true,
             reactive: true,
-            style: 'background-color: rgba(30, 30, 30, 0.85);'
+            style: 'background-color: rgba(30, 30, 30, 0.5);'
                  + 'border-radius: 8px;'
                  + 'padding: 6px 8px;',
         });

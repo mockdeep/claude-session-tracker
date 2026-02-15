@@ -55,12 +55,15 @@ if [ -f "$SETTINGS" ]; then
     | remove_tracker("SessionStart")
     | remove_tracker("Notification")
     | remove_tracker("Stop")
+    | remove_tracker("PostToolUse")
     | remove_tracker("UserPromptSubmit")
     | remove_tracker("SessionEnd")
     | append_hook("SessionStart";
         {"hooks": [{"type": "command", "command": "claude-session-tracker session-start"}]})
     | append_hook("Notification";
         {"matcher": "permission_prompt", "hooks": [{"type": "command", "command": "claude-session-tracker notification-permission"}]})
+    | append_hook("PostToolUse";
+        {"hooks": [{"type": "command", "command": "claude-session-tracker tool-active"}]})
     | append_hook("Stop";
         {"hooks": [{"type": "command", "command": "claude-session-tracker notification-idle"}]})
     | append_hook("UserPromptSubmit";
