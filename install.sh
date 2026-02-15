@@ -47,20 +47,21 @@ if [ -f "$SETTINGS" ]; then
     ],
     "Notification": [
       {
-        "matcher": "idle_prompt",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "claude-session-tracker notification-idle"
-          }
-        ]
-      },
-      {
         "matcher": "permission_prompt",
         "hooks": [
           {
             "type": "command",
             "command": "claude-session-tracker notification-permission"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "claude-session-tracker notification-idle"
           }
         ]
       }

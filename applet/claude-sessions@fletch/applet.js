@@ -8,7 +8,7 @@ const Mainloop = imports.mainloop;
 const STATE_DIR = GLib.build_filenamev([GLib.get_home_dir(), '.local', 'state', 'claude-sessions']);
 const DEFAULT_COLOR = '#cc241d';
 const DOT_SIZE = 12;
-const POLL_INTERVAL_SECONDS = 2;
+const POLL_INTERVAL_SECONDS = 1;
 const PULSE_INTERVAL_MS = 80;
 const PULSE_MIN_OPACITY = 100;
 const PULSE_MAX_OPACITY = 255;
@@ -24,14 +24,13 @@ class ClaudeSessionsApplet extends Applet.Applet {
         this.actor.add(this._dotBox);
 
         this._sessions = {};
+        this._lastSnapshot = '';
         this._focusedXid = 0;
         this._pollTimerId = null;
         this._pulseTimerId = null;
         this._pulsingDots = [];
         this._pulseDirection = 1;
         this._pulseOpacity = PULSE_MAX_OPACITY;
-        this._lastMtimeMs = 0;
-
         this._focusSignalId = global.display.connect('notify::focus-window', () => {
             this._onFocusChanged();
         });
@@ -61,23 +60,8 @@ class ClaudeSessionsApplet extends Applet.Applet {
         }
     }
 
-    _getDirMtime() {
-        try {
-            let dir = Gio.File.new_for_path(STATE_DIR);
-            let info = dir.query_info('time::modified-usec,time::modified', Gio.FileQueryInfoFlags.NONE, null);
-            return info.get_attribute_uint64('time::modified') * 1000 +
-                   Math.floor(info.get_attribute_uint32('time::modified-usec') / 1000);
-        } catch (e) {
-            return 0;
-        }
-    }
-
     _pollCheck() {
-        let mtime = this._getDirMtime();
-        if (mtime !== this._lastMtimeMs) {
-            this._lastMtimeMs = mtime;
-            this._refresh();
-        }
+        this._refresh();
         return GLib.SOURCE_CONTINUE;
     }
 
@@ -96,7 +80,7 @@ class ClaudeSessionsApplet extends Applet.Applet {
     }
 
     _refresh() {
-        this._sessions = {};
+        let sessions = {};
 
         let dir = Gio.File.new_for_path(STATE_DIR);
         let enumerator;
@@ -107,27 +91,33 @@ class ClaudeSessionsApplet extends Applet.Applet {
                 null
             );
         } catch (e) {
-            this._updatePanel();
-            return;
+            // directory gone or unreadable
         }
 
-        let fileInfo;
-        while ((fileInfo = enumerator.next_file(null)) !== null) {
-            let name = fileInfo.get_name();
-            if (!name.endsWith('.json')) continue;
+        if (enumerator) {
+            let fileInfo;
+            while ((fileInfo = enumerator.next_file(null)) !== null) {
+                let name = fileInfo.get_name();
+                if (!name.endsWith('.json')) continue;
 
-            let file = dir.get_child(name);
-            try {
-                let [ok, contents] = file.load_contents(null);
-                if (ok) {
-                    let session = JSON.parse(new TextDecoder().decode(contents));
-                    this._sessions[session.session_id] = session;
+                let file = dir.get_child(name);
+                try {
+                    let [ok, contents] = file.load_contents(null);
+                    if (ok) {
+                        let session = JSON.parse(new TextDecoder().decode(contents));
+                        sessions[session.session_id] = session;
+                    }
+                } catch (e) {
+                    // skip malformed files
                 }
-            } catch (e) {
-                // skip malformed files
             }
         }
 
+        let snapshot = JSON.stringify(sessions);
+        if (snapshot === this._lastSnapshot) return;
+
+        this._lastSnapshot = snapshot;
+        this._sessions = sessions;
         this._updatePanel();
     }
 

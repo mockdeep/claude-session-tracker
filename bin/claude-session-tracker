@@ -124,7 +124,7 @@ case "$action" in
         project_name: $pname,
         window_id: $wid,
         theme_color: $tc,
-        status: "active",
+        status: "idle",
         timestamp: $ts
       }' > "$local_tmp"
     mv "$local_tmp" "$state_file"
