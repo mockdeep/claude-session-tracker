@@ -34,6 +34,7 @@ class ClaudeSessionsExtension {
         this._focusSignalId = 0;
         this._monitorsChangedId = 0;
         this._allocationId = 0;
+        this._dbusSubscriptionIds = [];
         this._widget = null;
         this._container = null;
         this._tooltip = null;
@@ -57,6 +58,8 @@ class ClaudeSessionsExtension {
     disable() {
         this._stopPollTimer();
         this._stopPulseTimer();
+
+        this._unsubscribeDbusSignals();
 
         if (this._focusSignalId) {
             global.display.disconnect(this._focusSignalId);
@@ -200,14 +203,44 @@ class ClaudeSessionsExtension {
         }
     }
 
-    _pollCheck() {
-        let prevTabIndex = this._focusedTabIndex;
-        this._updateFocusedTab();
-        this._refresh();
-        // Re-render if active tab changed but sessions didn't
-        if (this._focusedTabIndex !== prevTabIndex) {
-            this._updateWidget();
+    _subscribeDbusSignals() {
+        this._unsubscribeDbusSignals();
+
+        let paths = new Set();
+        for (let sid in this._sessions) {
+            let s = this._sessions[sid];
+            if (s.dbus_window_path) paths.add(s.dbus_window_path);
         }
+
+        for (let path of paths) {
+            let subId = Gio.DBus.session.signal_subscribe(
+                'org.gnome.Terminal',
+                'org.gtk.Actions',
+                'Changed',
+                path,
+                null,
+                Gio.DBusSignalFlags.NONE,
+                () => {
+                    let prev = this._focusedTabIndex;
+                    this._updateFocusedTab();
+                    if (this._focusedTabIndex !== prev) {
+                        this._updateWidget();
+                    }
+                }
+            );
+            this._dbusSubscriptionIds.push(subId);
+        }
+    }
+
+    _unsubscribeDbusSignals() {
+        for (let subId of this._dbusSubscriptionIds) {
+            Gio.DBus.session.signal_unsubscribe(subId);
+        }
+        this._dbusSubscriptionIds = [];
+    }
+
+    _pollCheck() {
+        this._refresh();
         return GLib.SOURCE_CONTINUE;
     }
 
@@ -268,6 +301,8 @@ class ClaudeSessionsExtension {
 
         this._lastSnapshot = snapshot;
         this._sessions = sessions;
+        this._updateFocusedTab();
+        this._subscribeDbusSignals();
         this._updateWidget();
     }
 
