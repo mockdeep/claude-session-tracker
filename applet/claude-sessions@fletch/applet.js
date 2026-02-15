@@ -20,12 +20,26 @@ class ClaudeSessionsApplet extends Applet.Applet {
         this.actor.add(this._dotBox);
 
         this._sessions = {};
+        this._focusedXid = 0;
         this._pollTimerId = null;
         this._lastMtimeMs = 0;
+
+        this._focusSignalId = global.display.connect('notify::focus-window', () => {
+            this._onFocusChanged();
+        });
 
         this._ensureStateDir();
         this._refresh();
         this._startPollTimer();
+    }
+
+    _onFocusChanged() {
+        let win = global.display.get_focus_window();
+        let newXid = win ? win.get_xwindow() : 0;
+        if (newXid !== this._focusedXid) {
+            this._focusedXid = newXid;
+            this._updatePanel();
+        }
     }
 
     _ensureStateDir() {
@@ -40,7 +54,6 @@ class ClaudeSessionsApplet extends Applet.Applet {
     }
 
     _getDirMtime() {
-        // Check directory mtime as a cheap signal that contents changed
         try {
             let dir = Gio.File.new_for_path(STATE_DIR);
             let info = dir.query_info('time::modified-usec,time::modified', Gio.FileQueryInfoFlags.NONE, null);
@@ -110,54 +123,65 @@ class ClaudeSessionsApplet extends Applet.Applet {
         this._updatePanel();
     }
 
-    _getWaitingSessions() {
-        let waiting = [];
-        for (let id in this._sessions) {
-            let s = this._sessions[id];
-            if (s.status === 'idle' || s.status === 'permission') {
-                waiting.push(s);
-            }
-        }
-        // Permission first (more urgent), then by timestamp
-        waiting.sort((a, b) => {
-            if (a.status === 'permission' && b.status !== 'permission') return -1;
-            if (b.status === 'permission' && a.status !== 'permission') return 1;
+    _getSortedSessions() {
+        let sessions = Object.values(this._sessions);
+        // Permission first, then idle, then active — within each group by timestamp
+        let statusOrder = { permission: 0, idle: 1, active: 2 };
+        sessions.sort((a, b) => {
+            let oa = statusOrder[a.status] !== undefined ? statusOrder[a.status] : 3;
+            let ob = statusOrder[b.status] !== undefined ? statusOrder[b.status] : 3;
+            if (oa !== ob) return oa - ob;
             return (a.timestamp || '').localeCompare(b.timestamp || '');
         });
-        return waiting;
+        return sessions;
     }
 
     _updatePanel() {
-        let waiting = this._getWaitingSessions();
+        let sessions = this._getSortedSessions();
 
         this._dotBox.destroy_all_children();
 
-        if (waiting.length === 0) {
+        if (sessions.length === 0) {
             this.actor.hide();
             return;
         }
 
         this.actor.show();
 
-        for (let session of waiting) {
+        for (let session of sessions) {
             let color = session.theme_color || DEFAULT_COLOR;
             let isPermission = session.status === 'permission';
+            let isWaiting = isPermission || session.status === 'idle';
+            let isFocused = session.window_id && parseInt(session.window_id) === this._focusedXid;
 
             let border = isPermission
                 ? 'border: 2px solid #ffffff;'
                 : 'border: 2px solid transparent;';
 
             let dot = new St.Bin({
-                reactive: true,
-                track_hover: true,
                 style: `background-color: ${color}; `
                      + `width: ${DOT_SIZE}px; height: ${DOT_SIZE}px; `
                      + `border-radius: ${DOT_SIZE}px; `
                      + border,
+                opacity: isWaiting ? 255 : 128,
             });
 
+            let focusBar = new St.Bin({
+                style: `background-color: ${isFocused ? '#ffffff' : 'transparent'}; `
+                     + `width: ${DOT_SIZE}px; height: 2px; border-radius: 1px;`,
+            });
+
+            let container = new St.BoxLayout({
+                vertical: true,
+                reactive: true,
+                track_hover: true,
+                style: 'spacing: 2px;',
+            });
+            container.add_child(dot);
+            container.add_child(focusBar);
+
             let sessionId = session.session_id;
-            dot.connect('button-release-event', () => {
+            container.connect('button-release-event', () => {
                 Util.spawnCommandLine(`bash -c 'echo "{\\"session_id\\":\\"${sessionId}\\"}" | claude-session-tracker focus'`);
                 return true;
             });
@@ -166,16 +190,16 @@ class ClaudeSessionsApplet extends Applet.Applet {
             let icon = this._statusIcon(session.status);
             let tipText = `${icon} ${session.project_name}  (${session.status}, ${elapsed})`;
 
-            dot.connect('enter-event', () => {
+            container.connect('enter-event', () => {
                 this.set_applet_tooltip(tipText);
                 return false;
             });
-            dot.connect('leave-event', () => {
+            container.connect('leave-event', () => {
                 this.set_applet_tooltip('');
                 return false;
             });
 
-            this._dotBox.add_child(dot);
+            this._dotBox.add_child(container);
         }
     }
 
@@ -201,6 +225,10 @@ class ClaudeSessionsApplet extends Applet.Applet {
 
     on_applet_removed_from_panel() {
         this._stopPollTimer();
+        if (this._focusSignalId) {
+            global.display.disconnect(this._focusSignalId);
+            this._focusSignalId = 0;
+        }
     }
 }
 
