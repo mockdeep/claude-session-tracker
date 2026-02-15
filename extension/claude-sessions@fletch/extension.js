@@ -118,7 +118,7 @@ class ClaudeSessionsExtension {
             if (panels) {
                 for (let panel of panels) {
                     if (panel && panel.monitorIndex === monitor.index
-                        && panel.panelPosition === 2) {
+                        && panel.panelPosition === 1) {
                         panelHeight = panel.actor.get_height();
                     }
                 }
