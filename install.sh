@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Check dependencies
-for cmd in xdotool jq; do
+for cmd in xdotool jq wmctrl; do
   if ! command -v "$cmd" &>/dev/null; then
     echo "Error: $cmd is required but not installed."
     echo "  sudo apt install $cmd"

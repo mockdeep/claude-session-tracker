@@ -190,12 +190,10 @@ class ClaudeSessionsApplet extends Applet.Applet {
                 return true;
             });
 
-            let elapsed = this._formatElapsed(session.timestamp);
-            let icon = this._statusIcon(session.status);
-            let tipText = `${icon} ${session.project_name}  (${session.status}, ${elapsed})`;
-
             container.connect('enter-event', () => {
-                this.set_applet_tooltip(tipText);
+                let elapsed = this._formatElapsed(session.timestamp);
+                let icon = this._statusIcon(session.status);
+                this.set_applet_tooltip(`${icon} ${session.project_name}  (${session.status}, ${elapsed})`);
                 return false;
             });
             container.connect('leave-event', () => {
