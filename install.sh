@@ -34,59 +34,34 @@ if [ -f "$SETTINGS" ]; then
   cp "$SETTINGS" "$BACKUP"
   echo "Backed up settings to $BACKUP"
 
-  jq '.hooks = {
-    "SessionStart": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "claude-session-tracker session-start"
-          }
-        ]
-      }
-    ],
-    "Notification": [
-      {
-        "matcher": "permission_prompt",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "claude-session-tracker notification-permission"
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "claude-session-tracker notification-idle"
-          }
-        ]
-      }
-    ],
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "claude-session-tracker prompt-submit"
-          }
-        ]
-      }
-    ],
-    "SessionEnd": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "claude-session-tracker session-end"
-          }
-        ]
-      }
-    ]
-  }' "$SETTINGS" > "${SETTINGS}.tmp"
+  # Merge hooks: remove any existing claude-session-tracker entries, then append ours.
+  # This preserves other hooks the user may have configured.
+  jq '
+    def remove_tracker($event):
+      if .hooks[$event] then
+        .hooks[$event] |= [.[] | select((.hooks // []) | all(.command | test("claude-session-tracker") | not))]
+      else . end;
+
+    def append_hook($event; $entry):
+      .hooks[$event] = ((.hooks[$event] // []) + [$entry]);
+
+    .hooks //= {}
+    | remove_tracker("SessionStart")
+    | remove_tracker("Notification")
+    | remove_tracker("Stop")
+    | remove_tracker("UserPromptSubmit")
+    | remove_tracker("SessionEnd")
+    | append_hook("SessionStart";
+        {"hooks": [{"type": "command", "command": "claude-session-tracker session-start"}]})
+    | append_hook("Notification";
+        {"matcher": "permission_prompt", "hooks": [{"type": "command", "command": "claude-session-tracker notification-permission"}]})
+    | append_hook("Stop";
+        {"hooks": [{"type": "command", "command": "claude-session-tracker notification-idle"}]})
+    | append_hook("UserPromptSubmit";
+        {"hooks": [{"type": "command", "command": "claude-session-tracker prompt-submit"}]})
+    | append_hook("SessionEnd";
+        {"hooks": [{"type": "command", "command": "claude-session-tracker session-end"}]})
+  ' "$SETTINGS" > "${SETTINGS}.tmp"
   mv "${SETTINGS}.tmp" "$SETTINGS"
   echo "Updated Claude hooks in settings.json"
 else
