@@ -1,3 +1,18 @@
+/**
+ * @typedef {{
+ *   session_id: string,
+ *   pid?: number,
+ *   status?: string,
+ *   theme_color?: string,
+ *   window_id?: string,
+ *   tab_index?: number,
+ *   dbus_window_path?: string,
+ *   project_name?: string,
+ *   timestamp?: string,
+ *   cwd?: string
+ * }} Session
+ */
+
 const Main = imports.ui.main;
 const Gio = imports.gi.Gio;
 const GLib = imports.gi.GLib;
@@ -16,30 +31,51 @@ const PULSE_MAX_OPACITY = 120;
 const PULSE_STEP = 6;
 const EDGE_OFFSET = 10;
 
+/** @type {ClaudeSessionsExtension | null} */
 let _instance = null;
 
 class ClaudeSessionsExtension {
+    /** @param {object} metadata */
     constructor(metadata) {
+        /** @type {object} */
         this._metadata = metadata;
+        /** @type {Record<string, Session>} */
         this._sessions = {};
+        /** @type {string} */
         this._lastSnapshot = '';
+        /** @type {number} */
         this._focusedXid = 0;
+        /** @type {number} */
         this._focusedTabIndex = -1;
+        /** @type {string | null} */
         this._focusedDbusPath = null;
+        /** @type {number | null} */
         this._pollTimerId = null;
+        /** @type {number | null} */
         this._pulseTimerId = null;
+        /** @type {imports.gi.St.Bin[]} */
         this._pulsingDots = [];
+        /** @type {1 | -1} */
         this._pulseDirection = 1;
+        /** @type {number} */
         this._pulseOpacity = PULSE_MAX_OPACITY;
+        /** @type {number} */
         this._focusSignalId = 0;
+        /** @type {number} */
         this._monitorsChangedId = 0;
+        /** @type {number} */
         this._allocationId = 0;
+        /** @type {number[]} */
         this._dbusSubscriptionIds = [];
+        /** @type {imports.gi.St.BoxLayout | null} */
         this._widget = null;
+        /** @type {imports.gi.St.BoxLayout | null} */
         this._container = null;
+        /** @type {imports.gi.St.Label | null} */
         this._tooltip = null;
     }
 
+    /** @returns {void} */
     enable() {
         this._buildWidget();
         this._ensureStateDir();
@@ -55,6 +91,7 @@ class ClaudeSessionsExtension {
         this._startPollTimer();
     }
 
+    /** @returns {void} */
     disable() {
         this._stopPollTimer();
         this._stopPulseTimer();
@@ -69,7 +106,7 @@ class ClaudeSessionsExtension {
             Main.layoutManager.disconnect(this._monitorsChangedId);
             this._monitorsChangedId = 0;
         }
-        if (this._allocationId) {
+        if (this._allocationId && this._widget) {
             this._widget.disconnect(this._allocationId);
             this._allocationId = 0;
         }
@@ -86,6 +123,7 @@ class ClaudeSessionsExtension {
         this._pulsingDots = [];
     }
 
+    /** @returns {void} */
     _buildWidget() {
         this._widget = new St.BoxLayout({
             vertical: true,
@@ -111,6 +149,7 @@ class ClaudeSessionsExtension {
         });
     }
 
+    /** @returns {void} */
     _positionWidget() {
         let monitor = Main.layoutManager.primaryMonitor;
         if (!monitor || !this._widget) return;
@@ -140,6 +179,7 @@ class ClaudeSessionsExtension {
         );
     }
 
+    /** @returns {void} */
     _onFocusChanged() {
         let win = global.display.get_focus_window();
         let newXid = win ? win.get_xwindow() : 0;
@@ -150,6 +190,7 @@ class ClaudeSessionsExtension {
         }
     }
 
+    /** @returns {void} */
     _updateFocusedTab() {
         this._focusedTabIndex = -1;
         this._focusedDbusPath = null;
@@ -157,6 +198,7 @@ class ClaudeSessionsExtension {
         if (!this._focusedXid) return;
 
         // Find a session matching the focused window that has D-Bus tab info
+        /** @type {string | null} */
         let dbusPath = null;
         for (let sid in this._sessions) {
             let s = this._sessions[sid];
@@ -192,20 +234,24 @@ class ClaudeSessionsExtension {
         }
     }
 
+    /** @returns {void} */
     _ensureStateDir() {
         let dir = Gio.File.new_for_path(STATE_DIR);
         try {
             dir.make_directory_with_parents(null);
         } catch (e) {
-            if (!e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.EXISTS)) {
+            if (e instanceof GLib.Error
+                && !e.matches(/** @type {number} */ (/** @type {unknown} */ (Gio.IOErrorEnum)), Gio.IOErrorEnum.EXISTS)) {
                 global.logError(`Claude Sessions: failed to create state dir: ${e.message}`);
             }
         }
     }
 
+    /** @returns {void} */
     _subscribeDbusSignals() {
         this._unsubscribeDbusSignals();
 
+        /** @type {Set<string>} */
         let paths = new Set();
         for (let sid in this._sessions) {
             let s = this._sessions[sid];
@@ -232,6 +278,7 @@ class ClaudeSessionsExtension {
         }
     }
 
+    /** @returns {void} */
     _unsubscribeDbusSignals() {
         for (let subId of this._dbusSubscriptionIds) {
             Gio.DBus.session.signal_unsubscribe(subId);
@@ -239,18 +286,21 @@ class ClaudeSessionsExtension {
         this._dbusSubscriptionIds = [];
     }
 
+    /** @returns {boolean} */
     _pollCheck() {
         this._refresh();
         return GLib.SOURCE_CONTINUE;
     }
 
+    /** @returns {void} */
     _startPollTimer() {
         if (this._pollTimerId) return;
-        this._pollTimerId = Mainloop.timeout_add_seconds(POLL_INTERVAL_SECONDS, () => {
+        this._pollTimerId = /** @type {number} */ (/** @type {unknown} */ (Mainloop.timeout_add_seconds(POLL_INTERVAL_SECONDS, () => {
             return this._pollCheck();
-        });
+        })));
     }
 
+    /** @returns {void} */
     _stopPollTimer() {
         if (this._pollTimerId) {
             Mainloop.source_remove(this._pollTimerId);
@@ -258,10 +308,13 @@ class ClaudeSessionsExtension {
         }
     }
 
+    /** @returns {void} */
     _refresh() {
+        /** @type {Record<string, Session>} */
         let sessions = {};
 
         let dir = Gio.File.new_for_path(STATE_DIR);
+        /** @type {imports.gi.Gio.FileEnumerator | undefined} */
         let enumerator;
         try {
             enumerator = dir.enumerate_children(
@@ -274,6 +327,7 @@ class ClaudeSessionsExtension {
         }
 
         if (enumerator) {
+            /** @type {imports.gi.Gio.FileInfo | null} */
             let fileInfo;
             while ((fileInfo = enumerator.next_file(null)) !== null) {
                 let name = fileInfo.get_name();
@@ -283,6 +337,7 @@ class ClaudeSessionsExtension {
                 try {
                     let [ok, contents] = file.load_contents(null);
                     if (ok) {
+                        /** @type {Session} */
                         let session = JSON.parse(new TextDecoder().decode(contents));
                         if (session.pid && !GLib.file_test('/proc/' + session.pid, GLib.FileTest.EXISTS)) {
                             try { file.delete(null); } catch (e) { /* already gone */ }
@@ -306,20 +361,23 @@ class ClaudeSessionsExtension {
         this._updateWidget();
     }
 
+    /** @returns {Session[]} */
     _getSortedSessions() {
         let sessions = Object.values(this._sessions);
+        /** @type {Record<string, number>} */
         let statusOrder = { permission: 0, idle: 1, active: 2 };
         sessions.sort((a, b) => {
-            let oa = statusOrder[a.status] !== undefined ? statusOrder[a.status] : 3;
-            let ob = statusOrder[b.status] !== undefined ? statusOrder[b.status] : 3;
+            let oa = a.status !== undefined && statusOrder[a.status] !== undefined ? statusOrder[a.status] : 3;
+            let ob = b.status !== undefined && statusOrder[b.status] !== undefined ? statusOrder[b.status] : 3;
             if (oa !== ob) return oa - ob;
             return (a.timestamp || '').localeCompare(b.timestamp || '');
         });
         return sessions;
     }
 
+    /** @returns {void} */
     _updateWidget() {
-        if (!this._container) return;
+        if (!this._container || !this._widget) return;
 
         let sessions = this._getSortedSessions();
 
@@ -340,6 +398,7 @@ class ClaudeSessionsExtension {
         this._widget.show();
 
         // Build rows of GRID_COLUMNS dots each
+        /** @type {imports.gi.St.BoxLayout | null} */
         let currentRow = null;
         for (let i = 0; i < sessions.length; i++) {
             if (i % GRID_COLUMNS === 0) {
@@ -410,7 +469,7 @@ class ClaudeSessionsExtension {
                 return true;
             });
 
-            currentRow.add_child(dot);
+            /** @type {imports.gi.St.BoxLayout} */ (currentRow).add_child(dot);
         }
 
         if (this._pulsingDots.length > 0) {
@@ -418,6 +477,11 @@ class ClaudeSessionsExtension {
         }
     }
 
+    /**
+     * @param {imports.gi.St.Bin} actor
+     * @param {string} text
+     * @returns {void}
+     */
     _showTooltip(actor, text) {
         this._hideTooltip();
 
@@ -433,7 +497,7 @@ class ClaudeSessionsExtension {
         });
 
         // Position above the dot, centered horizontally
-        let [actorX, actorY] = actor.get_transformed_position();
+        let [actorX, actorY] = /** @type {[number, number]} */ (actor.get_transformed_position());
         let actorW = actor.get_width();
         // Force allocation so we can measure
         this._tooltip.get_allocation_box();
@@ -446,6 +510,7 @@ class ClaudeSessionsExtension {
         );
     }
 
+    /** @returns {void} */
     _hideTooltip() {
         if (this._tooltip) {
             Main.layoutManager.removeChrome(this._tooltip);
@@ -454,6 +519,7 @@ class ClaudeSessionsExtension {
         }
     }
 
+    /** @returns {void} */
     _startPulseTimer() {
         if (this._pulseTimerId) return;
         this._pulseTimerId = Mainloop.timeout_add(PULSE_INTERVAL_MS, () => {
@@ -472,6 +538,7 @@ class ClaudeSessionsExtension {
         });
     }
 
+    /** @returns {void} */
     _stopPulseTimer() {
         if (this._pulseTimerId) {
             Mainloop.source_remove(this._pulseTimerId);
@@ -479,6 +546,10 @@ class ClaudeSessionsExtension {
         }
     }
 
+    /**
+     * @param {string} sessionId
+     * @returns {void}
+     */
     _focusSession(sessionId) {
         try {
             let payload = JSON.stringify({ session_id: sessionId });
@@ -489,19 +560,25 @@ class ClaudeSessionsExtension {
                 GLib.SpawnFlags.SEARCH_PATH | GLib.SpawnFlags.DO_NOT_REAP_CHILD,
                 null
             );
-            if (ok && stdinFd !== -1) {
+            if (ok && stdinFd !== null && stdinFd !== -1) {
                 let stdinStream = new Gio.UnixOutputStream({ fd: stdinFd, close_fd: true });
-                stdinStream.write_all(payload, null);
+                stdinStream.write_all(/** @type {any} */ (new TextEncoder().encode(payload)), null);
                 stdinStream.close(null);
             }
-            GLib.child_watch_add(GLib.PRIORITY_DEFAULT, pid, () => {
-                GLib.spawn_close_pid(pid);
-            });
+            if (pid !== null) {
+                GLib.child_watch_add(GLib.PRIORITY_DEFAULT, pid, () => {
+                    GLib.spawn_close_pid(/** @type {number} */ (pid));
+                });
+            }
         } catch (e) {
-            global.logError(`Claude Sessions: failed to focus session: ${e.message}`);
+            global.logError(`Claude Sessions: failed to focus session: ${e instanceof Error ? e.message : e}`);
         }
     }
 
+    /**
+     * @param {string} [timestamp]
+     * @returns {string}
+     */
     _formatElapsed(timestamp) {
         if (!timestamp) return '';
         let then = new Date(timestamp).getTime();
@@ -516,6 +593,10 @@ class ClaudeSessionsExtension {
         return `${hours}h${mins}m`;
     }
 
+    /**
+     * @param {string} [status]
+     * @returns {string}
+     */
     _statusIcon(status) {
         if (status === 'permission') return '\u26a0\ufe0f';
         if (status === 'idle') return '\u23f8\ufe0f';
@@ -523,14 +604,20 @@ class ClaudeSessionsExtension {
     }
 }
 
+/**
+ * @param {object} metadata
+ * @returns {void}
+ */
 function init(metadata) {
     _instance = new ClaudeSessionsExtension(metadata);
 }
 
+/** @returns {void} */
 function enable() {
     if (_instance) _instance.enable();
 }
 
+/** @returns {void} */
 function disable() {
     if (_instance) _instance.disable();
 }
