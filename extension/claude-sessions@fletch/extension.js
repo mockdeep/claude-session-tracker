@@ -285,7 +285,7 @@ class ClaudeSessionsExtension {
                     if (ok) {
                         let session = JSON.parse(new TextDecoder().decode(contents));
                         if (session.pid && !GLib.file_test('/proc/' + session.pid, GLib.FileTest.EXISTS)) {
-                            file.delete(null);
+                            try { file.delete(null); } catch (e) { /* already gone */ }
                             continue;
                         }
                         sessions[session.session_id] = session;
@@ -494,7 +494,9 @@ class ClaudeSessionsExtension {
                 stdinStream.write_all(payload, null);
                 stdinStream.close(null);
             }
-            GLib.spawn_close_pid(pid);
+            GLib.child_watch_add(GLib.PRIORITY_DEFAULT, pid, () => {
+                GLib.spawn_close_pid(pid);
+            });
         } catch (e) {
             global.logError(`Claude Sessions: failed to focus session: ${e.message}`);
         }
