@@ -238,7 +238,7 @@ echo "{\"session_id\":\"thm4\",\"cwd\":\"$missing_cwd\"}" | "$TRACKER" session-e
 
 # --- mock-based tests for external tool interactions ---
 
-echo "find_window_id via PTY (mocked xdotool)"
+echo "find_window_id via getactivewindow (mocked xdotool)"
 make_mock "$MOCK_BIN/xdotool" 'echo 99887766'
 (
   unset WINDOWID

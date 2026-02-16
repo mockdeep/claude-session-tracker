@@ -74,26 +74,14 @@ find_pty() {
 }
 
 find_window_id() {
-  local pty="$1"
-
   if [ -n "${WINDOWID:-}" ]; then
     echo "$WINDOWID"
     return
   fi
 
-  if [ -z "$pty" ]; then
-    echo ""
-    return
-  fi
-
-  # Briefly set terminal title via the PTY, find the window, then clear it
-  local marker="__claude_session_${session_id}__"
-  printf '\033]2;%s\007' "$marker" > "$pty" 2>/dev/null
-  sleep 0.2
+  # At session-start the terminal is focused, so getactivewindow is reliable
   local wid
-  wid=$(xdotool search --name "$marker" 2>/dev/null | head -1 || true)
-  # Clear the marker title — Claude's status line will overwrite it anyway
-  printf '\033]2;\007' > "$pty" 2>/dev/null
+  wid=$(xdotool getactivewindow 2>/dev/null || true)
   echo "${wid:-}"
 }
 
@@ -212,7 +200,7 @@ case "$action" in
     cwd=$(echo "$input" | jq -r '.cwd // empty')
     project_name=$(basename "$cwd")
     pty_path=$(find_pty)
-    window_id=$(find_window_id "$pty_path")
+    window_id=$(find_window_id)
     theme_color=$(find_theme_color "$cwd")
 
     # Get D-Bus window path and tab index for tab switching
