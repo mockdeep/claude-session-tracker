@@ -60,24 +60,28 @@ find_theme_color() {
   echo "${color:-}"
 }
 
-find_window_id() {
-  if [ -n "${WINDOWID:-}" ]; then
-    echo "$WINDOWID"
-    return
-  fi
-
-  # Find the controlling PTY by walking up the process tree
+find_pty() {
   local pid=$$
   local pty=""
   while [ "$pid" -gt 1 ]; do
     pty=$(readlink /proc/"$pid"/fd/0 2>/dev/null || true)
     if [[ "$pty" == /dev/pts/* ]]; then
-      break
+      echo "$pty"
+      return
     fi
     pid=$(awk '{print $4}' /proc/"$pid"/stat 2>/dev/null || echo 1)
   done
+}
 
-  if [[ "$pty" != /dev/pts/* ]]; then
+find_window_id() {
+  local pty="$1"
+
+  if [ -n "${WINDOWID:-}" ]; then
+    echo "$WINDOWID"
+    return
+  fi
+
+  if [ -z "$pty" ]; then
     echo ""
     return
   fi
@@ -123,6 +127,61 @@ find_tab_info() {
   fi
 }
 
+find_current_tab_index() {
+  local wid="$1" dwp="$2" pty="$3" stored_ti="$4"
+
+  # Write a marker to our PTY's terminal title
+  local marker="__claude_focus_${session_id}__"
+  printf '\033]2;%s\007' "$marker" > "$pty" 2>/dev/null
+  sleep 0.05
+
+  # Try the stored index first (fast path: tabs weren't reordered)
+  gdbus call --session \
+    --dest org.gnome.Terminal \
+    --object-path "$dwp" \
+    --method org.gtk.Actions.Activate \
+    active-tab "[<int32 $stored_ti>]" '{}' >/dev/null 2>&1 || true
+
+  local hex_wid
+  hex_wid=$(printf '0x%x' "$wid")
+  local title
+  title=$(xprop -id "$hex_wid" _NET_WM_NAME 2>/dev/null \
+    | sed -n 's/.*= "\(.*\)"/\1/p')
+
+  if [[ "$title" == *"$marker"* ]]; then
+    printf '\033]2;\007' > "$pty" 2>/dev/null
+    echo "$stored_ti"
+    return
+  fi
+
+  # Stored index is stale — scan tabs to find the right one
+  local i
+  for i in $(seq 0 20); do
+    [ "$i" = "$stored_ti" ] && continue
+    gdbus call --session \
+      --dest org.gnome.Terminal \
+      --object-path "$dwp" \
+      --method org.gtk.Actions.Activate \
+      active-tab "[<int32 $i>]" '{}' >/dev/null 2>&1 || break
+
+    title=$(xprop -id "$hex_wid" _NET_WM_NAME 2>/dev/null \
+      | sed -n 's/.*= "\(.*\)"/\1/p')
+    if [[ "$title" == *"$marker"* ]]; then
+      printf '\033]2;\007' > "$pty" 2>/dev/null
+      # Update the stored tab index for next time
+      local tmp="${state_file}.tmp"
+      jq --argjson ti "$i" '.tab_index = $ti' "$state_file" > "$tmp"
+      mv "$tmp" "$state_file"
+      echo "$i"
+      return
+    fi
+  done
+
+  # Couldn't find the tab — clear marker and fall back to stored index
+  printf '\033]2;\007' > "$pty" 2>/dev/null
+  echo "$stored_ti"
+}
+
 find_claude_pid() {
   local pid=$PPID
   while [ "$pid" -gt 1 ]; do
@@ -152,7 +211,8 @@ case "$action" in
   session-start)
     cwd=$(echo "$input" | jq -r '.cwd // empty')
     project_name=$(basename "$cwd")
-    window_id=$(find_window_id)
+    pty_path=$(find_pty)
+    window_id=$(find_window_id "$pty_path")
     theme_color=$(find_theme_color "$cwd")
 
     # Get D-Bus window path and tab index for tab switching
@@ -174,6 +234,7 @@ case "$action" in
       --arg ts "$timestamp" \
       --arg dwp "$dbus_window_path" \
       --arg ti "$tab_index" \
+      --arg pty "${pty_path:-}" \
       --argjson pid "$(find_claude_pid)" \
       '{
         session_id: $sid,
@@ -185,7 +246,8 @@ case "$action" in
         timestamp: $ts,
         pid: $pid,
         dbus_window_path: $dwp,
-        tab_index: ($ti | if . == "" then null else tonumber end)
+        tab_index: ($ti | if . == "" then null else tonumber end),
+        pty_path: ($pty | if . == "" then null else . end)
       }' > "$local_tmp"
     mv "$local_tmp" "$state_file"
     ;;
@@ -221,12 +283,19 @@ case "$action" in
         # Switch to the correct tab via D-Bus if tab info is available
         dwp=$(jq -r '.dbus_window_path // empty' "$state_file")
         ti=$(jq -r '.tab_index // empty' "$state_file")
+        pty=$(jq -r '.pty_path // empty' "$state_file")
         if [ -n "$dwp" ] && [ -n "$ti" ]; then
-          gdbus call --session \
-            --dest org.gnome.Terminal \
-            --object-path "$dwp" \
-            --method org.gtk.Actions.Activate \
-            active-tab "[<int32 $ti>]" '{}' >/dev/null 2>&1 || true
+          if [ -n "$pty" ] && [ -e "$pty" ]; then
+            # Re-detect tab index in case tabs were reordered
+            ti=$(find_current_tab_index "$wid" "$dwp" "$pty" "$ti")
+          fi
+          if [ -n "$ti" ]; then
+            gdbus call --session \
+              --dest org.gnome.Terminal \
+              --object-path "$dwp" \
+              --method org.gtk.Actions.Activate \
+              active-tab "[<int32 $ti>]" '{}' >/dev/null 2>&1 || true
+          fi
         fi
       fi
     fi

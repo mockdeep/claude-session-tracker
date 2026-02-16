@@ -298,6 +298,43 @@ else
   inc_failed
 fi
 rm -f "$STATE_DIR/foc1.json" "$TMPBASE/wmctrl.log" "$TMPBASE/gdbus.log"
+rm -f "$MOCK_BIN/wmctrl" "$MOCK_BIN/gdbus"
+
+echo "focus re-detects tab after reorder"
+# Use a regular file as fake PTY (just needs to be writable for escape sequences)
+FAKE_PTY="$TMPBASE/fake-pty"
+touch "$FAKE_PTY"
+# Session has tab_index=0 but tab was reordered; marker will match on tab 1
+jq -n --arg pty "$FAKE_PTY" '{
+  session_id: "foc2",
+  cwd: "/tmp/proj",
+  project_name: "proj",
+  window_id: "12345",
+  theme_color: "",
+  status: "idle",
+  timestamp: "2025-01-01T00:00:00Z",
+  pid: 1,
+  dbus_window_path: "/org/gnome/Terminal/window/7",
+  tab_index: 0,
+  pty_path: $pty
+}' > "$STATE_DIR/foc2.json"
+make_mock "$MOCK_BIN/wmctrl" 'true'
+# Mock xprop: first call (stored index=0) returns no marker, second call (index=1) returns marker
+make_mock "$MOCK_BIN/xprop" '
+  CALL_FILE="'"$TMPBASE"'/xprop-calls"
+  n=0; [ -f "$CALL_FILE" ] && n=$(cat "$CALL_FILE")
+  n=$((n + 1)); echo "$n" > "$CALL_FILE"
+  if [ "$n" -le 1 ]; then
+    echo "_NET_WM_NAME(UTF8_STRING) = \"bash\""
+  else
+    echo "_NET_WM_NAME(UTF8_STRING) = \"__claude_focus_foc2__\""
+  fi
+'
+make_mock "$MOCK_BIN/gdbus" 'true'
+echo '{"session_id":"foc2","cwd":"/tmp/proj"}' | "$TRACKER" focus
+# tab_index should be updated to 1 (the first index tried after stored_ti=0)
+assert_json_eq "$STATE_DIR/foc2.json" '.tab_index' '1'
+rm -f "$STATE_DIR/foc2.json" "$FAKE_PTY" "$TMPBASE/xprop-calls"
 # Restore no-op mocks
 make_mock "$MOCK_BIN/xprop" 'echo ""'
 rm -f "$MOCK_BIN/wmctrl" "$MOCK_BIN/gdbus"

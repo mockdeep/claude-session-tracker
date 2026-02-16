@@ -7,6 +7,7 @@
  *   window_id?: string,
  *   tab_index?: number,
  *   dbus_window_path?: string,
+ *   pty_path?: string,
  *   project_name?: string,
  *   timestamp?: string,
  *   cwd?: string
