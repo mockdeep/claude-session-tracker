@@ -157,7 +157,7 @@ find_current_tab_index() {
     if [[ "$title" == *"$marker"* ]]; then
       printf '\033]2;\007' > "$pty" 2>/dev/null
       # Update the stored tab index for next time
-      local tmp="${state_file}.tmp"
+      local tmp="${state_file}.tmp.$$"
       jq --argjson ti "$i" '.tab_index = $ti' "$state_file" > "$tmp"
       mv "$tmp" "$state_file"
       echo "$i"
@@ -188,7 +188,7 @@ find_claude_pid() {
 update_state() {
   local new_status="$1"
   if [ -f "$state_file" ]; then
-    local tmp="${state_file}.tmp"
+    local tmp="${state_file}.tmp.$$"
     jq --arg status "$new_status" --arg ts "$timestamp" \
       '.status = $status | .timestamp = $ts' "$state_file" > "$tmp"
     mv "$tmp" "$state_file"
@@ -212,7 +212,7 @@ case "$action" in
       tab_index="${tab_info#* }"
     fi
 
-    local_tmp="${state_file}.tmp"
+    local_tmp="${state_file}.tmp.$$"
     jq -n \
       --arg sid "$session_id" \
       --arg cwd "$cwd" \

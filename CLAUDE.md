@@ -48,7 +48,7 @@ Runtime: `xdotool`, `jq`, `wmctrl`, `xprop`, `gdbus`, Cinnamon desktop. No build
 
 ## Conventions
 
-- Bash scripts use `set -euo pipefail`. State file writes use atomic tmp+mv pattern.
+- Bash scripts use `set -euo pipefail`. State file writes use atomic tmp+mv pattern with PID-unique tmp files (`${file}.tmp.$$`) to avoid races between concurrent hook invocations.
 - Extension uses Cinnamon's CJS (imports.gi/imports.ui), not ES modules or Node.
 - The extension hides itself when no sessions exist (count == 0). All sessions are shown (active, idle, permission).
 - The extension exports `init(metadata)`, `enable()`, `disable()` per the Cinnamon extension API. Widget is created via `St.BoxLayout` with dots arranged in a grid.
