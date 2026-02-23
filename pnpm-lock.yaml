@@ -9,16 +9,16 @@ importers:
   .:
     devDependencies:
       '@ci-types/cjs':
-        specifier: ^6.0.2-5
-        version: 6.0.2-5
+        specifier: ^6.0.2
+        version: 6.0.2
       typescript:
         specifier: ^5
         version: 5.9.3
 
 packages:
 
-  '@ci-types/cjs@6.0.2-5':
-    resolution: {integrity: sha512-evU4UuSP6EVzkBZpNQI8cb2lkrbj/FH8g1ZUryzckoGxfeRfrM6BxFkfZTGNvJUSflMiHNsYI+UD/i16eXZTJg==}
+  '@ci-types/cjs@6.0.2':
+    resolution: {integrity: sha512-8KR52brcoQPls7gfYNQzDGZdZXKZBmGainLE1DL7Mz9YkZiegjXeZe78Y3tRt7jmV/uKw4pIg4R59rynyWq/Fg==}
 
   typescript@5.9.3:
     resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
@@ -27,6 +27,6 @@ packages:
 
 snapshots:
 
-  '@ci-types/cjs@6.0.2-5': {}
+  '@ci-types/cjs@6.0.2': {}
 
   typescript@5.9.3: {}
