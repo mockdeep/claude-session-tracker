@@ -212,6 +212,18 @@ case "$action" in
       tab_index="${tab_info#* }"
     fi
 
+    # Clean up any existing sessions with the same PID (stale from previous
+    # session that didn't get a session-end hook)
+    claude_pid=$(find_claude_pid)
+    for f in "$STATE_DIR"/*.json; do
+      [ -f "$f" ] || continue
+      [ "$f" = "$state_file" ] && continue
+      existing_pid=$(jq -r '.pid // empty' "$f" 2>/dev/null || true)
+      if [ "$existing_pid" = "$claude_pid" ]; then
+        rm -f "$f"
+      fi
+    done
+
     local_tmp="${state_file}.tmp.$$"
     jq -n \
       --arg sid "$session_id" \
@@ -223,7 +235,7 @@ case "$action" in
       --arg dwp "$dbus_window_path" \
       --arg ti "$tab_index" \
       --arg pty "${pty_path:-}" \
-      --argjson pid "$(find_claude_pid)" \
+      --argjson pid "$claude_pid" \
       '{
         session_id: $sid,
         cwd: $cwd,
