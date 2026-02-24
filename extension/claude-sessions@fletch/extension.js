@@ -44,6 +44,8 @@ class ClaudeSessionsExtension {
         this._sessions = {};
         /** @type {string} */
         this._lastSnapshot = '';
+        /** @type {string} */
+        this._lastVisualKey = '';
         /** @type {number} */
         this._focusedXid = 0;
         /** @type {number} */
@@ -121,6 +123,7 @@ class ClaudeSessionsExtension {
 
         this._sessions = {};
         this._lastSnapshot = '';
+        this._lastVisualKey = '';
         this._pulsingDots = [];
     }
 
@@ -356,10 +359,20 @@ class ClaudeSessionsExtension {
         if (snapshot === this._lastSnapshot) return;
 
         this._lastSnapshot = snapshot;
+
+        // Build a visual key that excludes timestamp — timestamp changes only
+        // affect tooltips, not dot appearance.  Rebuilding the widget on every
+        // timestamp update causes visible flicker and resets the pulse phase.
+        let visualKey = JSON.stringify(sessions, (k, v) => k === 'timestamp' ? undefined : v);
+        let needsRebuild = visualKey !== this._lastVisualKey;
+        this._lastVisualKey = visualKey;
+
         this._sessions = sessions;
         this._updateFocusedTab();
         this._subscribeDbusSignals();
-        this._updateWidget();
+        if (needsRebuild) {
+            this._updateWidget();
+        }
     }
 
     /** @returns {Session[]} */
