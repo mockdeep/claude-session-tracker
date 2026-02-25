@@ -506,8 +506,7 @@ class ClaudeSessionsExtension {
 
             // Hover tooltip
             let icon = this._statusIcon(session.status);
-            let elapsed = this._formatElapsed(session.timestamp);
-            let tooltipText = `${icon} ${session.project_name || '?'}  ${elapsed}`.trim();
+            let tooltipText = `${icon} ${session.project_name || '?'}`;
 
             dot.connect('enter-event', () => {
                 this._showTooltip(dot, tooltipText);
@@ -543,7 +542,7 @@ class ClaudeSessionsExtension {
         this._tooltip = new St.Label({
             text: text,
             style: 'background-color: rgba(20, 20, 20, 0.9);'
-                 + 'color: #e0e0e0; font-size: 11px;'
+                 + 'color: #e0e0e0; font-size: 14px;'
                  + 'padding: 4px 8px; border-radius: 4px;',
         });
         Main.layoutManager.addChrome(this._tooltip, {
@@ -630,23 +629,6 @@ class ClaudeSessionsExtension {
         }
     }
 
-    /**
-     * @param {string} [timestamp]
-     * @returns {string}
-     */
-    _formatElapsed(timestamp) {
-        if (!timestamp) return '';
-        let then = new Date(timestamp).getTime();
-        let now = Date.now();
-        let seconds = Math.floor((now - then) / 1000);
-
-        if (seconds < 60) return `${seconds}s`;
-        let minutes = Math.floor(seconds / 60);
-        if (minutes < 60) return `${minutes}m`;
-        let hours = Math.floor(minutes / 60);
-        let mins = minutes % 60;
-        return `${hours}h${mins}m`;
-    }
 
     /**
      * @param {string} [status]
