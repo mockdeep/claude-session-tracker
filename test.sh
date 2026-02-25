@@ -128,10 +128,10 @@ echo "session-end"
 echo '{"session_id":"test1","cwd":"/tmp/my-project"}' | "$TRACKER" session-end
 assert_file_missing "$STATE_DIR/test1.json"
 
-# --- multiple sessions ---
+# --- multiple sessions (written directly to avoid same-PID cleanup) ---
 echo "multiple sessions"
-echo '{"session_id":"aaa","cwd":"/tmp/alpha"}' | "$TRACKER" session-start
-echo '{"session_id":"bbb","cwd":"/tmp/beta"}' | "$TRACKER" session-start
+jq -n '{session_id:"aaa",cwd:"/tmp/alpha",project_name:"alpha",window_id:"",theme_color:"",status:"idle",timestamp:"2025-01-01T00:00:00Z",pid:99990}' > "$STATE_DIR/aaa.json"
+jq -n '{session_id:"bbb",cwd:"/tmp/beta",project_name:"beta",window_id:"",theme_color:"",status:"idle",timestamp:"2025-01-01T00:00:00Z",pid:99991}' > "$STATE_DIR/bbb.json"
 assert_file_exists "$STATE_DIR/aaa.json"
 assert_file_exists "$STATE_DIR/bbb.json"
 # ending one doesn't affect the other
@@ -139,6 +139,19 @@ echo '{"session_id":"aaa","cwd":"/tmp/alpha"}' | "$TRACKER" session-end
 assert_file_missing "$STATE_DIR/aaa.json"
 assert_file_exists "$STATE_DIR/bbb.json"
 echo '{"session_id":"bbb","cwd":"/tmp/beta"}' | "$TRACKER" session-end
+
+# --- same-PID cleanup on session-start ---
+echo "stale PID cleanup"
+# Create a stale session with the same PID that session-start will produce
+our_pid=$("$TRACKER" session-start <<< '{"session_id":"pid_probe","cwd":"/tmp"}' && jq -r '.pid' "$STATE_DIR/pid_probe.json")
+# Create a fake stale session with that PID
+jq -n --argjson pid "$our_pid" '{session_id:"stale1",cwd:"/tmp/old",project_name:"old",window_id:"",theme_color:"",status:"idle",timestamp:"2025-01-01T00:00:00Z",pid:$pid}' > "$STATE_DIR/stale1.json"
+# New session-start should clean up stale1 (same PID, different session_id)
+echo '{"session_id":"fresh1","cwd":"/tmp/new"}' | "$TRACKER" session-start
+assert_file_missing "$STATE_DIR/stale1.json"
+assert_file_exists "$STATE_DIR/fresh1.json"
+echo '{"session_id":"fresh1","cwd":"/tmp/new"}' | "$TRACKER" session-end
+rm -f "$STATE_DIR/pid_probe.json"
 
 # --- missing session_id is silently ignored ---
 echo "missing session_id"
