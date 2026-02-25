@@ -375,16 +375,57 @@ class ClaudeSessionsExtension {
         }
     }
 
+    /**
+     * Look up the workspace index for a window XID.
+     * @param {number} xid
+     * @returns {number} workspace index, or Infinity if not found
+     */
+    _getWorkspaceForXid(xid) {
+        if (!xid) return Infinity;
+        let actors = global.get_window_actors();
+        for (let i = 0; i < actors.length; i++) {
+            let metaWin = actors[i].get_meta_window();
+            if (metaWin && metaWin.get_xwindow() === xid) {
+                let ws = metaWin.get_workspace();
+                return ws ? ws.index() : Infinity;
+            }
+        }
+        return Infinity;
+    }
+
     /** @returns {Session[]} */
     _getSortedSessions() {
         let sessions = Object.values(this._sessions);
-        /** @type {Record<string, number>} */
-        let statusOrder = { permission: 0, idle: 1, active: 2 };
+
+        // Build a workspace lookup for each session's window
+        /** @type {Map<string, number>} */
+        let wsCache = new Map();
+        for (let i = 0; i < sessions.length; i++) {
+            let s = sessions[i];
+            let xid = s.window_id ? parseInt(s.window_id) : 0;
+            if (xid && !wsCache.has(s.window_id)) {
+                wsCache.set(s.window_id, this._getWorkspaceForXid(xid));
+            }
+        }
+
         sessions.sort((a, b) => {
-            let oa = a.status !== undefined && statusOrder[a.status] !== undefined ? statusOrder[a.status] : 3;
-            let ob = b.status !== undefined && statusOrder[b.status] !== undefined ? statusOrder[b.status] : 3;
-            if (oa !== ob) return oa - ob;
-            return (a.timestamp || '').localeCompare(b.timestamp || '');
+            // Primary: workspace index
+            let wsA = a.window_id && wsCache.has(a.window_id) ? wsCache.get(a.window_id) : Infinity;
+            let wsB = b.window_id && wsCache.has(b.window_id) ? wsCache.get(b.window_id) : Infinity;
+            if (wsA !== wsB) return wsA - wsB;
+
+            // Secondary: window ID (groups tabs in the same terminal)
+            let widA = a.window_id || '';
+            let widB = b.window_id || '';
+            if (widA !== widB) return widA.localeCompare(widB);
+
+            // Tertiary: tab index
+            let tabA = a.tab_index != null ? a.tab_index : -1;
+            let tabB = b.tab_index != null ? b.tab_index : -1;
+            if (tabA !== tabB) return tabA - tabB;
+
+            // Fallback: session ID for stability
+            return a.session_id.localeCompare(b.session_id);
         });
         return sessions;
     }
