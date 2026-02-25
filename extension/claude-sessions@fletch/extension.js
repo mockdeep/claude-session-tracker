@@ -436,7 +436,6 @@ class ClaudeSessionsExtension {
 
         let sessions = this._getSortedSessions();
 
-        this._stopPulseTimer();
         this._pulsingDots = [];
         this._container.destroy_all_children();
 
@@ -446,6 +445,7 @@ class ClaudeSessionsExtension {
         }
 
         if (sessions.length === 0) {
+            this._stopPulseTimer();
             this._widget.hide();
             return;
         }
@@ -501,6 +501,7 @@ class ClaudeSessionsExtension {
             }
 
             if (!isWaiting) {
+                dot.opacity = this._pulseOpacity;
                 this._pulsingDots.push(dot);
             }
 
@@ -528,6 +529,8 @@ class ClaudeSessionsExtension {
 
         if (this._pulsingDots.length > 0) {
             this._startPulseTimer();
+        } else {
+            this._stopPulseTimer();
         }
     }
 

@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 A Cinnamon desktop extension + Claude Code hook script for tracking multiple Claude Code sessions. Two components communicate via JSON state files in `~/.local/state/claude-sessions/`:
 
 - **`bin/claude-session-tracker`** — Bash script invoked by Claude Code hooks. Manages per-session JSON state files keyed by session ID. Actions: `session-start`, `notification-idle`, `notification-permission`, `prompt-submit`, `tool-active`, `session-end`, `focus`.
-- **`extension/claude-sessions@fletch/extension.js`** — Cinnamon extension (GJS/CJS). Monitors the state directory via polling, shows a floating widget in the bottom-right corner with colored dots in a grid (2 columns). Hover shows a tooltip with status icon, project name, and elapsed time. Each dot is clickable to focus its terminal window.
+- **`extension/claude-sessions@fletch/extension.js`** — Cinnamon extension (GJS/CJS). Monitors the state directory via polling, shows a floating widget in the bottom-right corner with colored dots in a grid (2 columns). Hover shows a tooltip with status icon and project name. Each dot is clickable to focus its terminal window.
 
 ## Architecture
 

@@ -11,7 +11,7 @@ Two components communicate via JSON state files in `~/.local/state/claude-sessio
 
 ### Widget
 
-The widget floats above all windows (via `Main.layoutManager.addChrome`) and auto-hides when no sessions exist. Each session is a colored dot. Hover shows a tooltip with status icon, project name, and elapsed time. Click a dot to focus its terminal window (and tab, for Gnome Terminal).
+The widget floats above all windows (via `Main.layoutManager.addChrome`) and auto-hides when no sessions exist. Each session is a colored dot. Hover shows a tooltip with status icon and project name. Click a dot to focus its terminal window (and tab, for Gnome Terminal).
 
 ### Visual States
 
