@@ -2,7 +2,7 @@
   "private": true,
   "devDependencies": {
     "@ci-types/cjs": "^6.0.2",
-    "typescript": "^5"
+    "typescript": "^7.0.2"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p extension/claude-sessions@fletch/jsconfig.json"
