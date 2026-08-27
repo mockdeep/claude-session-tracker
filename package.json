@@ -1,7 +1,7 @@
 {
   "private": true,
   "devDependencies": {
-    "@ci-types/cjs": "^6.0.2-5",
+    "@ci-types/cjs": "^6.0.2",
     "typescript": "^5"
   },
   "scripts": {
